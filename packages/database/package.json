@@ -1,0 +1,31 @@
+{
+  "name": "@hatch/database",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist .turbo *.tsbuildinfo",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:studio": "drizzle-kit studio"
+  },
+  "dependencies": {
+    "@hatch/shared": "workspace:*",
+    "better-sqlite3": "^12.8.0",
+    "drizzle-orm": "^0.45.1"
+  },
+  "devDependencies": {
+    "@hatch/typescript-config": "workspace:*",
+    "@types/better-sqlite3": "^7.6.13",
+    "drizzle-kit": "^0.31.10"
+  }
+}

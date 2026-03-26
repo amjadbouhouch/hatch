@@ -1,0 +1,11 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./packages/shared" },
+    { "path": "./packages/database" },
+    { "path": "./packages/harness" },
+    { "path": "./packages/client" },
+    { "path": "./apps/gateway" },
+    { "path": "./apps/desktop" }
+  ]
+}

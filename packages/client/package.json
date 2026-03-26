@@ -1,0 +1,36 @@
+{
+  "name": "@hatch/client",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./harness": {
+      "types": "./dist/harness/index.d.ts",
+      "import": "./dist/harness/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist .turbo *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@hatch/shared": "workspace:*",
+    "zustand": "^5.0.11"
+  },
+  "peerDependencies": {
+    "react": ">=19.0.0"
+  },
+  "devDependencies": {
+    "@hatch/typescript-config": "workspace:*",
+    "@types/react": "^19.2.14",
+    "react": "^19.2.4",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3"
+  }
+}
