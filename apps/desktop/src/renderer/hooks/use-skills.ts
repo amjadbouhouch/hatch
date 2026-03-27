@@ -1,50 +1,19 @@
 import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getClient } from '../client/api.js';
+import type {
+  BrowseSkillsResponse,
+  BrowseSkill,
+  SkillSourcesResponse,
+  SkillSource,
+  SkillContent,
+  InstalledSkillList,
+  InstalledSkill,
+  InstalledSkillContent,
+  InstallSkillInput,
+  UninstallSkillInput,
+} from '../client/api-types.js';
 
-// ─── Types ──────────────────────────────────────────────────────────────────
-
-export type BrowseSkill = {
-  source: string;
-  skillId: string;
-  name: string;
-  installs: number;
-  owner: string;
-  repo: string;
-  githubUrl: string;
-  displayName: string;
-};
-
-type BrowsePage = {
-  skills: BrowseSkill[];
-  total: number;
-  page: number;
-  pageSize: number;
-  totalPages: number;
-};
-
-export type SkillSource = {
-  source: string;
-  owner: string;
-  repo: string;
-  skillCount: number;
-  totalInstalls: number;
-};
-
-export type InstalledSkill = {
-  name: string;
-  displayName: string;
-  description: string;
-  path: string;
-};
-
-export type SkillContent = {
-  source: string;
-  skillId: string;
-  path: string;
-  metadata: { name: string; description: string };
-  instructions: string;
-  raw: string;
-};
+export type { BrowseSkill, SkillSource, SkillContent, InstalledSkill, InstalledSkillContent };
 
 const PAGE_SIZE = 25;
 
@@ -52,19 +21,19 @@ const PAGE_SIZE = 25;
 
 export function useBrowseSkills(search: string, source: string) {
   return useInfiniteQuery({
-    queryKey: ['skills', 'browse', search, source],
+    queryKey: ['skills', 'browse', search, source] as const,
     queryFn: async ({ pageParam = 1 }) => {
       const api = await getClient();
       if (search.trim()) {
         const res = await api.skills.search.$get({
           query: { q: search, page: String(pageParam), pageSize: String(PAGE_SIZE) },
         });
-        return res.json() as Promise<BrowsePage>;
+        return res.json() as Promise<BrowseSkillsResponse>;
       }
       const res = await api.skills.browse.$get({
         query: { page: String(pageParam), pageSize: String(PAGE_SIZE), source },
       });
-      return res.json() as Promise<BrowsePage>;
+      return res.json() as Promise<BrowseSkillsResponse>;
     },
     initialPageParam: 1,
     getNextPageParam: (lastPage) => {
@@ -78,11 +47,11 @@ export function useBrowseSkills(search: string, source: string) {
 
 export function useSkillSources() {
   return useQuery({
-    queryKey: ['skills', 'sources'],
+    queryKey: ['skills', 'sources'] as const,
     queryFn: async () => {
       const api = await getClient();
       const res = await api.skills.sources.$get();
-      return res.json() as Promise<{ sources: SkillSource[]; total: number }>;
+      return res.json() as Promise<SkillSourcesResponse>;
     },
     staleTime: 5 * 60_000,
   });
@@ -92,7 +61,7 @@ export function useSkillSources() {
 
 export function useSkillContent(owner: string, repo: string, skillId: string) {
   return useQuery({
-    queryKey: ['skills', 'content', owner, repo, skillId],
+    queryKey: ['skills', 'content', owner, repo, skillId] as const,
     queryFn: async () => {
       const api = await getClient();
       const res = await api.skills.content[':owner'][':repo'][':skillId'].$get({
@@ -110,14 +79,14 @@ export function useSkillContent(owner: string, repo: string, skillId: string) {
 
 export function useInstalledSkillContent(workspaceId: string | undefined, skillId: string | null) {
   return useQuery({
-    queryKey: ['skills', 'installed-content', workspaceId, skillId],
+    queryKey: ['skills', 'installed-content', workspaceId, skillId] as const,
     queryFn: async () => {
       const api = await getClient();
       const res = await api.skills.installed[':workspaceId'][':skillId'].content.$get({
         param: { workspaceId: workspaceId!, skillId: skillId! },
       });
       if (!res.ok) throw new Error('Failed to load skill');
-      return res.json() as Promise<{ skillId: string; metadata: { name: string; description: string }; instructions: string; raw: string }>;
+      return res.json() as Promise<InstalledSkillContent>;
     },
     enabled: !!workspaceId && !!skillId,
     staleTime: 5 * 60_000,
@@ -128,13 +97,13 @@ export function useInstalledSkillContent(workspaceId: string | undefined, skillI
 
 export function useInstalledSkills(workspaceId: string | undefined) {
   return useQuery({
-    queryKey: ['skills', 'installed', workspaceId],
+    queryKey: ['skills', 'installed', workspaceId] as const,
     queryFn: async () => {
       const api = await getClient();
       const res = await api.skills.installed[':workspaceId'].$get({
         param: { workspaceId: workspaceId! },
       });
-      return res.json() as Promise<InstalledSkill[]>;
+      return res.json() as Promise<InstalledSkillList>;
     },
     enabled: !!workspaceId,
   });
@@ -145,12 +114,7 @@ export function useInstalledSkills(workspaceId: string | undefined) {
 export function useInstallSkill() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (params: {
-      workspaceId: string;
-      skillId: string;
-      owner: string;
-      repo: string;
-    }) => {
+    mutationFn: async (params: InstallSkillInput) => {
       const api = await getClient();
       const res = await api.skills.install.$post({ json: params });
       return res.json();
@@ -164,7 +128,7 @@ export function useInstallSkill() {
 export function useUninstallSkill() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (params: { workspaceId: string; skillId: string }) => {
+    mutationFn: async (params: UninstallSkillInput) => {
       const api = await getClient();
       const res = await api.skills.uninstall.$post({ json: params });
       return res.json();

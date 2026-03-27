@@ -8,6 +8,49 @@ import { HATCH_HOME } from '../services/agent-factory.js';
 
 const SKILLS_SH_API = 'https://skills-api-production.up.railway.app';
 
+// ─── External API types (skills.sh) ────────────────────────────────────────
+
+type BrowseSkill = {
+  source: string;
+  skillId: string;
+  name: string;
+  installs: number;
+  owner: string;
+  repo: string;
+  githubUrl: string;
+  displayName: string;
+};
+
+type BrowsePage = {
+  skills: BrowseSkill[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+};
+
+type SkillSource = {
+  source: string;
+  owner: string;
+  repo: string;
+  skillCount: number;
+  totalInstalls: number;
+};
+
+type SkillSourcesPage = {
+  sources: SkillSource[];
+  total: number;
+};
+
+type SkillContentResponse = {
+  source: string;
+  skillId: string;
+  path: string;
+  metadata: { name: string; description: string };
+  instructions: string;
+  raw: string;
+};
+
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 /** Install a single skill from skills.sh into a workspace (disk + DB). */
@@ -95,7 +138,7 @@ export const skillRoutes = new Hono()
     const pageSize = Number(c.req.query('pageSize') ?? 25);
     const source = c.req.query('source') ?? '';
 
-    const empty = { skills: [], total: 0, page: 1, pageSize, totalPages: 0 };
+    const empty: BrowsePage = { skills: [], total: 0, page: 1, pageSize, totalPages: 0 };
     try {
       const url = new URL(`${SKILLS_SH_API}/api/skills`);
       url.searchParams.set('page', String(page));
@@ -104,7 +147,7 @@ export const skillRoutes = new Hono()
 
       const res = await fetch(url, { signal: AbortSignal.timeout(10_000) });
       if (!res.ok) return c.json(empty);
-      return c.json(await res.json());
+      return c.json(await res.json() as BrowsePage);
     } catch {
       return c.json(empty);
     }
@@ -116,7 +159,7 @@ export const skillRoutes = new Hono()
     const page = Number(c.req.query('page') ?? 1);
     const pageSize = Number(c.req.query('pageSize') ?? 25);
 
-    const empty = { skills: [], total: 0, page: 1, pageSize, totalPages: 0 };
+    const empty: BrowsePage = { skills: [], total: 0, page: 1, pageSize, totalPages: 0 };
     if (!q.trim()) return c.json(empty);
 
     try {
@@ -127,7 +170,7 @@ export const skillRoutes = new Hono()
 
       const res = await fetch(url, { signal: AbortSignal.timeout(10_000) });
       if (!res.ok) return c.json(empty);
-      return c.json(await res.json());
+      return c.json(await res.json() as BrowsePage);
     } catch {
       return c.json(empty);
     }
@@ -135,14 +178,15 @@ export const skillRoutes = new Hono()
 
   // Top sources (for filter dropdown)
   .get('/skills/sources', async (c) => {
+    const empty: SkillSourcesPage = { sources: [], total: 0 };
     try {
       const res = await fetch(`${SKILLS_SH_API}/api/skills/sources/top?pageSize=50`, {
         signal: AbortSignal.timeout(10_000),
       });
-      if (!res.ok) return c.json({ sources: [] });
-      return c.json(await res.json());
+      if (!res.ok) return c.json(empty);
+      return c.json(await res.json() as SkillSourcesPage);
     } catch {
-      return c.json({ sources: [] });
+      return c.json(empty);
     }
   })
 
@@ -155,7 +199,7 @@ export const skillRoutes = new Hono()
         { signal: AbortSignal.timeout(10_000) },
       );
       if (!res.ok) return c.json({ error: 'Not found' }, 404);
-      return c.json(await res.json());
+      return c.json(await res.json() as SkillContentResponse);
     } catch {
       return c.json({ error: 'Request timed out' }, 504);
     }

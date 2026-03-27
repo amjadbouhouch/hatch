@@ -15,21 +15,16 @@
  *
  * Same flow applies to PDF (render pages to images → vision) and Excel
  * (parse to text via sheetjs — no vision needed).
- *
- * TODO: persist to workspace config, wire into handleSubmit pipeline.
  */
-import { useState, useId } from "react";
+import { useState, useEffect, useId } from "react";
+import { useParams } from "react-router-dom";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { EyeIcon, EyeOffIcon, ExternalLinkIcon } from "lucide-react";
+import { EyeIcon, EyeOffIcon, ExternalLinkIcon, LoaderIcon } from "lucide-react";
+import { useVisionConfig, useSaveVisionConfig } from "../../hooks/use-configs.js";
 
-// ─── Mock data ──────────────────────────────────────────────────────────────
-
-const MOCK = {
-  model: "openrouter/google/gemini-2.5-flash-preview",
-  apiKey: "",
-};
+// ─── Presets ────────────────────────────────────────────────────────────────
 
 const PRESETS = [
   { label: "GPT-4o", id: "openrouter/openai/gpt-4o", note: "OpenAI" },
@@ -41,25 +36,57 @@ const PRESETS = [
 // ─── Component ──────────────────────────────────────────────────────────────
 
 export function VisionSettings() {
-  const [model, setModel] = useState(MOCK.model);
-  const [apiKey, setApiKey] = useState(MOCK.apiKey);
+  const { workspaceId } = useParams<{ workspaceId: string }>();
+  const { data: config, isLoading } = useVisionConfig(workspaceId);
+  const { mutate: save, isPending: isSaving } = useSaveVisionConfig();
+
+  const [model, setModel] = useState("");
+  const [apiKey, setApiKey] = useState("");
   const [showKey, setShowKey] = useState(false);
+  const [loaded, setLoaded] = useState(false);
 
   const id = useId();
   const modelId = `${id}-model`;
   const apiKeyId = `${id}-apikey`;
 
+  // Sync server state → form state
+  useEffect(() => {
+    if (config === undefined) return;
+    setModel(config?.model ?? "");
+    setApiKey(config?.apiKey ?? "");
+    setLoaded(true);
+  }, [config]);
+
   const provider = model.split("/").slice(0, 2).join("/") || "";
   const activePreset = PRESETS.find((p) => p.id === model);
 
+  const isDirty =
+    loaded && (
+      model !== (config?.model ?? "") ||
+      apiKey !== (config?.apiKey ?? "")
+    );
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!workspaceId) return;
+
+    save({
+      workspaceId,
+      model: model || null,
+      apiKey: apiKey || null,
+    });
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <LoaderIcon className="size-4 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
   return (
-    <form
-      className="space-y-5"
-      onSubmit={(e) => {
-        e.preventDefault();
-        // TODO: persist settings
-      }}
-    >
+    <form className="space-y-5" onSubmit={handleSubmit}>
       <div className="space-y-1">
         <p className="text-xs text-muted-foreground">
           Used to describe images and scanned PDFs before sending to the agent.
@@ -159,8 +186,15 @@ export function VisionSettings() {
       </Field>
 
       <div className="flex justify-end pt-1">
-        <Button type="submit" size="sm">
-          Save
+        <Button type="submit" size="sm" disabled={!isDirty || isSaving}>
+          {isSaving ? (
+            <>
+              <LoaderIcon className="size-3 animate-spin" />
+              Saving…
+            </>
+          ) : (
+            "Save"
+          )}
         </Button>
       </div>
     </form>

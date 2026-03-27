@@ -1,31 +1,26 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getClient } from '../client/api.js';
+import type {
+  ScheduleList,
+  Schedule,
+  ToggleScheduleInput,
+  ToggleScheduleResponse,
+  DeleteScheduleInput,
+} from '../client/api-types.js';
 
-// ─── Types ──────────────────────────────────────────────────────────────────
-
-export type Schedule = {
-  id: string;
-  name: string;
-  description: string | null;
-  humanReadable: string;
-  timezone: string;
-  prompt: string;
-  enabled: boolean;
-  nextRunAt: string | null;
-  createdAt: string;
-};
+export type { ScheduleList, Schedule };
 
 // ─── List schedules ─────────────────────────────────────────────────────────
 
 export function useSchedules(workspaceId: string | undefined) {
   return useQuery({
-    queryKey: ['schedules', workspaceId],
+    queryKey: ['schedules', workspaceId] as const,
     queryFn: async () => {
       const api = await getClient();
       const res = await api.schedules[':workspaceId'].$get({
         param: { workspaceId: workspaceId! },
       });
-      return res.json() as Promise<Schedule[]>;
+      return res.json() as Promise<ScheduleList>;
     },
     enabled: !!workspaceId,
     staleTime: 30_000,
@@ -38,16 +33,10 @@ export function useSchedules(workspaceId: string | undefined) {
 export function useToggleSchedule() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (params: {
-      workspaceId: string;
-      scheduleId: string;
-      enabled: boolean;
-    }) => {
+    mutationFn: async (params: ToggleScheduleInput) => {
       const api = await getClient();
-      const res = await api.schedules.toggle.$post({
-        json: params,
-      });
-      return res.json();
+      const res = await api.schedules.toggle.$post({ json: params });
+      return res.json() as Promise<ToggleScheduleResponse>;
     },
     onSuccess: (_data, vars) => {
       qc.invalidateQueries({ queryKey: ['schedules', vars.workspaceId] });
@@ -60,11 +49,9 @@ export function useToggleSchedule() {
 export function useDeleteSchedule() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (params: { workspaceId: string; scheduleId: string }) => {
+    mutationFn: async (params: DeleteScheduleInput) => {
       const api = await getClient();
-      const res = await api.schedules.delete.$post({
-        json: params,
-      });
+      const res = await api.schedules.delete.$post({ json: params });
       return res.json();
     },
     onSuccess: (_data, vars) => {

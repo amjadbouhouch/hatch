@@ -1308,7 +1308,6 @@ export class Harness<TState extends HarnessStateSchema<any> = HarnessStateSchema
         requestContext,
         maxSteps: 1000,
         requireToolApproval: !isYolo,
-        modelSettings: { temperature: 0.1, },
         ...(tracingContext && { tracingContext }),
         ...(tracingOptions && { tracingOptions }),
         ...(currentMode.activeTools && { activeTools: currentMode.activeTools }),
@@ -1347,7 +1346,10 @@ export class Harness<TState extends HarnessStateSchema<any> = HarnessStateSchema
         };
       }
 
-      const response = await agent.stream(messageInput as any, streamOptions as any);
+      const response = await agent.stream(messageInput as any, {
+        ...streamOptions,
+        ...(this.config.modelSettings && { modelSettings: this.config.modelSettings }),
+      });
       await this.processStream(response, requestContext);
 
       if (this.currentOperationId === operationId) {
@@ -2223,7 +2225,6 @@ export class Harness<TState extends HarnessStateSchema<any> = HarnessStateSchema
         requestContext,
         maxSteps: 1000,
         requireToolApproval: !isYolo,
-        modelSettings: { temperature: 1 },
         ...(tracingContext && { tracingContext }),
         ...(tracingOptions && { tracingOptions }),
         ...(currentMode.activeTools && { activeTools: currentMode.activeTools }),
@@ -2238,7 +2239,10 @@ export class Harness<TState extends HarnessStateSchema<any> = HarnessStateSchema
         role: 'user',
         content: '[system: mode switched — continue your previous task]',
         metadata: { removeThisMessage: true },
-      } as any, streamOptions as any);
+      }, {
+        ...streamOptions,
+        ...(this.config.modelSettings && { modelSettings: this.config.modelSettings }),
+      });
       await this.processStream(response, requestContext);
 
       if (this.currentOperationId === operationId) {
@@ -3222,7 +3226,7 @@ const HIDDEN_CONTROL_PARTS = ['[SCREEN_UPDATE]'];
  * 3. Strips hidden control parts (e.g. [SCREEN_UPDATE]) from remaining messages
  */
 export function filterUnwantedMessages<
-  T extends { role?: string; content: { parts?: Array<{ type?: string; text?: string; [k: string]: unknown }>; metadata?: Record<string, unknown> } },
+  T extends { role?: string; content: { parts?: Array<{ type?: string; text?: string;[k: string]: unknown }>; metadata?: Record<string, unknown> } },
 >(messages: T[]): T[] {
   return messages
     .filter((m) => {

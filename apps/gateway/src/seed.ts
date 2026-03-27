@@ -1,8 +1,8 @@
 import { mkdirSync, writeFileSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { db, workspaces, migrate } from '@hatch/database';
-import { DEFAULT_SOUL, DEFAULT_IDENTITY, DEFAULT_MEMORY, DEFAULT_SKILLS } from './templates.js';
+import { db, workspaces, modelConfigs, embeddingConfigs, migrate } from '@hatch/database';
+import { DEFAULT_SOUL, DEFAULT_IDENTITY, DEFAULT_MEMORY, DEFAULT_SKILLS, DEFAULT_MODEL_CONFIG, DEFAULT_EMBEDDING_CONFIG } from './templates.js';
 import { HATCH_HOME, DEFAULT_WORKSPACE_ID } from './services/agent-factory.js';
 import { installSkillToWorkspace } from './routes/skills.js';
 
@@ -31,7 +31,20 @@ export async function seed(): Promise<void> {
     console.log(`[seed] workspace created: ${created.name} (${created.id})`);
   }
 
-  // 3. Write SOUL.md + IDENTITY.md if they don't exist yet
+  // 3. Seed default configs
+  if (created) {
+    await db
+      .insert(modelConfigs)
+      .values({ workspaceId: DEFAULT_WORKSPACE_ID, ...DEFAULT_MODEL_CONFIG })
+      .onConflictDoNothing();
+    await db
+      .insert(embeddingConfigs)
+      .values({ workspaceId: DEFAULT_WORKSPACE_ID, ...DEFAULT_EMBEDDING_CONFIG })
+      .onConflictDoNothing();
+    console.log('[seed] default configs created');
+  }
+
+  // 5. Write SOUL.md + IDENTITY.md if they don't exist yet
   const wsDir = join(HATCH_HOME, 'workspaces', DEFAULT_WORKSPACE_ID);
   mkdirSync(wsDir, { recursive: true });
 
@@ -48,7 +61,7 @@ export async function seed(): Promise<void> {
     console.log(`[seed] wrote ${identityPath}`);
   }
 
-  // 4. Scaffold knowledge/ and memory/ directories
+  // 6. Scaffold knowledge/ and memory/ directories
   const knowledgeDir = join(wsDir, 'knowledge');
   const memoryDir = join(wsDir, 'memory');
   const dailyDir = join(memoryDir, 'daily');
@@ -61,7 +74,7 @@ export async function seed(): Promise<void> {
     console.log(`[seed] wrote ${memoryPath}`);
   }
 
-  // 5. Install default skills (only on first workspace creation)
+  // 7. Install default skills (only on first workspace creation)
   if (created) {
     for (const s of DEFAULT_SKILLS) {
       const result = await installSkillToWorkspace(DEFAULT_WORKSPACE_ID, s.skillId, s.owner, s.repo);

@@ -1,47 +1,19 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getClient } from '../client/api.js';
+import type {
+  KnowledgeTree,
+  FilePreview,
+  UploadResponse,
+  UploadResult,
+} from '../client/api-types.js';
 
-// ─── Types ──────────────────────────────────────────────────────────────────
-
-export type TreeItem = {
-  name: string;
-  type: 'file' | 'directory';
-  size?: number;
-  children?: string[];
-};
-
-export type KnowledgeTree = {
-  items: Record<string, TreeItem>;
-  rootId: string;
-};
-
-export type UploadFile = {
-  name: string;
-  content: string; // base64
-  path: string;
-};
-
-export type UploadResult = {
-  name: string;
-  path: string;
-  size: number;
-  ok: boolean;
-  error?: string;
-};
-
-export type FilePreview = {
-  name: string;
-  path: string;
-  size: number;
-  content: string | null;
-  message?: string;
-};
+export type { KnowledgeTree, FilePreview, UploadResult };
 
 // ─── Fetch tree ─────────────────────────────────────────────────────────────
 
 export function useKnowledgeTree(workspaceId: string | undefined) {
   return useQuery({
-    queryKey: ['knowledge-tree', workspaceId],
+    queryKey: ['knowledge-tree', workspaceId] as const,
     queryFn: async () => {
       const api = await getClient();
       const res = await api.knowledge[':workspaceId'].tree.$get({
@@ -59,7 +31,7 @@ export function useKnowledgeTree(workspaceId: string | undefined) {
 
 export function useFilePreview(workspaceId: string | undefined, filePath: string | null) {
   return useQuery({
-    queryKey: ['knowledge-file', workspaceId, filePath],
+    queryKey: ['knowledge-file', workspaceId, filePath] as const,
     queryFn: async () => {
       const api = await getClient();
       const res = await api.knowledge[':workspaceId'].file[':path{.+}'].$get({
@@ -77,13 +49,13 @@ export function useFilePreview(workspaceId: string | undefined, filePath: string
 export function useUploadKnowledge() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (params: { workspaceId: string; files: UploadFile[] }) => {
+    mutationFn: async (params: { workspaceId: string; files: { name: string; content: string; path: string }[] }) => {
       const api = await getClient();
       const res = await api.knowledge[':workspaceId'].upload.$post({
         param: { workspaceId: params.workspaceId },
         json: { files: params.files },
       });
-      return res.json() as Promise<{ results: UploadResult[] }>;
+      return res.json() as Promise<UploadResponse>;
     },
     onSuccess: (_data, vars) => {
       qc.invalidateQueries({ queryKey: ['knowledge-tree', vars.workspaceId] });
@@ -147,4 +119,3 @@ export function useMoveKnowledge() {
     },
   });
 }
-

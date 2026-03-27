@@ -11,6 +11,7 @@ import {
   SettingsIcon,
   BrainIcon,
   EyeIcon,
+  BoxesIcon,
   ShieldCheckIcon,
   SlidersHorizontalIcon,
   ExternalLinkIcon,
@@ -20,6 +21,7 @@ const NAV_ITEMS = [
   { label: "General", href: "", icon: SettingsIcon },
   { label: "Model & Keys", href: "/model", icon: BrainIcon },
   { label: "Vision Model", href: "/vision", icon: EyeIcon },
+  { label: "Embeddings", href: "/embeddings", icon: BoxesIcon },
   { label: "Permissions", href: "/permissions", icon: ShieldCheckIcon },
 ];
 

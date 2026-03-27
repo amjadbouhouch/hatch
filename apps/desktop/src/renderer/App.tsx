@@ -148,13 +148,13 @@ function AppShell() {
           <Routes>
             <Route path="/" element={<EmptyState />} />
             <Route path="/app-settings" element={<GlobalSettingsLayout />}>
-              <Route index element={<EmbeddingSettings />} />
-              <Route path="appearance" element={<ThemeSettings />} />
+              <Route index element={<ThemeSettings />} />
             </Route>
             <Route path="/:workspaceId/settings" element={<SettingsLayout />}>
               <Route index element={<GeneralSettings />} />
               <Route path="model" element={<ModelSettings />} />
               <Route path="vision" element={<VisionSettings />} />
+              <Route path="embeddings" element={<EmbeddingSettings />} />
               <Route path="permissions" element={<PermissionsSettings />} />
             </Route>
             <Route path="/:workspaceId/skills" element={<SkillsPage />} />

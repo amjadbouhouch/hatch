@@ -15,6 +15,7 @@ export type {
   HarnessMessage,
   HarnessMessageContent,
   HarnessMode,
+  HarnessModelSettings,
   HarnessOMConfig,
   HarnessRequestContext,
   HarnessSession,

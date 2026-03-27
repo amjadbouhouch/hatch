@@ -1,62 +1,106 @@
-import { useState, useId } from "react";
+import { useState, useEffect, useId } from "react";
+import { useParams } from "react-router-dom";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import { EyeIcon, EyeOffIcon, ExternalLinkIcon } from "lucide-react";
+import { EyeIcon, EyeOffIcon, ExternalLinkIcon, LoaderIcon } from "lucide-react";
+import { useEmbeddingConfig, useSaveEmbeddingConfig } from "../../hooks/use-configs.js";
 
-// ─── Mock data ──────────────────────────────────────────────────────────────
-
-const MOCK = {
-  model: "openai/text-embedding-3-small",
-  apiKey: "",
-  useCustomProvider: false,
-  customUrl: "",
-  customProviderId: "",
-  customModelId: "",
-  customApiKey: "",
-};
+// ─── Presets ────────────────────────────────────────────────────────────────
 
 const PRESETS = [
-  { label: "text-embedding-3-small", id: "openai/text-embedding-3-small", dims: 1536, tokens: 8191 },
-  { label: "text-embedding-3-large", id: "openai/text-embedding-3-large", dims: 3072, tokens: 8191 },
-  { label: "text-embedding-ada-002", id: "openai/text-embedding-ada-002", dims: 1536, tokens: 8191 },
-  { label: "gemini-embedding-001", id: "google/gemini-embedding-001", dims: 768, tokens: 2048 },
+  { label: "text-embedding-3-small", id: "openrouter/openai/text-embedding-3-small", dims: 1536, tokens: 8191 },
+  { label: "text-embedding-3-large", id: "openrouter/openai/text-embedding-3-large", dims: 3072, tokens: 8191 },
+  { label: "text-embedding-ada-002", id: "openrouter/openai/text-embedding-ada-002", dims: 1536, tokens: 8191 },
+  { label: "gemini-embedding-001", id: "openrouter/google/gemini-embedding-001", dims: 768, tokens: 2048 },
 ];
 
 // ─── Component ──────────────────────────────────────────────────────────────
 
 export function EmbeddingSettings() {
-  const [model, setModel] = useState(MOCK.model);
-  const [apiKey, setApiKey] = useState(MOCK.apiKey);
+  const { workspaceId } = useParams<{ workspaceId: string }>();
+  const { data: config, isLoading } = useEmbeddingConfig(workspaceId);
+  const { mutate: save, isPending: isSaving } = useSaveEmbeddingConfig();
+
+  const [model, setModel] = useState("");
+  const [apiKey, setApiKey] = useState("");
   const [showKey, setShowKey] = useState(false);
-  const [useCustom, setUseCustom] = useState(MOCK.useCustomProvider);
-  const [customUrl, setCustomUrl] = useState(MOCK.customUrl);
-  const [customProviderId, setCustomProviderId] = useState(MOCK.customProviderId);
-  const [customModelId, setCustomModelId] = useState(MOCK.customModelId);
-  const [customApiKey, setCustomApiKey] = useState(MOCK.customApiKey);
+  const [useCustom, setUseCustom] = useState(false);
+  const [customUrl, setCustomUrl] = useState("");
+  const [customProviderId, setCustomProviderId] = useState("");
+  const [customModelId, setCustomModelId] = useState("");
+  const [customApiKey, setCustomApiKey] = useState("");
   const [showCustomKey, setShowCustomKey] = useState(false);
+  const [loaded, setLoaded] = useState(false);
 
   const id = useId();
   const modelId = `${id}-model`;
   const apiKeyId = `${id}-apikey`;
   const customToggleId = `${id}-custom`;
 
+  // Sync server state → form state
+  useEffect(() => {
+    if (config === undefined) return;
+    setModel(config?.model ?? "");
+    setApiKey(config?.apiKey ?? "");
+    setUseCustom(false);
+    setCustomUrl("");
+    setCustomProviderId("");
+    setCustomModelId("");
+    setCustomApiKey("");
+    setLoaded(true);
+  }, [config]);
+
   const provider = model.split("/")[0] || "";
   const activePreset = PRESETS.find((p) => p.id === model);
   const envVar =
     provider === "openai" ? "OPENAI_API_KEY"
     : provider === "google" ? "GOOGLE_GENERATIVE_AI_API_KEY"
+    : provider === "openrouter" ? "OPENROUTER_API_KEY"
     : `${provider.toUpperCase()}_API_KEY`;
 
+  const isDirty =
+    loaded && (
+      model !== (config?.model ?? "") ||
+      apiKey !== (config?.apiKey ?? "")
+    );
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!workspaceId) return;
+
+    const selectedPreset = PRESETS.find((p) => p.id === model);
+
+    save({
+      workspaceId,
+      model: model || null,
+      apiKey: apiKey || null,
+      dimension: selectedPreset?.dims ?? config?.dimension ?? null,
+    });
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <LoaderIcon className="size-4 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  // No workspaceId — show message (e.g. when accessed from global settings without context)
+  if (!workspaceId) {
+    return (
+      <div className="py-12 text-center">
+        <p className="text-sm text-muted-foreground">
+          Select a workspace to configure embedding settings.
+        </p>
+      </div>
+    );
+  }
+
   return (
-    <form
-      className="space-y-5"
-      onSubmit={(e) => {
-        e.preventDefault();
-        // TODO: persist settings
-      }}
-    >
+    <form className="space-y-5" onSubmit={handleSubmit}>
       {/* Model */}
       <Field label="Model" htmlFor={modelId} hint={
         <>
@@ -234,8 +278,15 @@ export function EmbeddingSettings() {
       )}
 
       <div className="flex justify-end pt-1">
-        <Button type="submit" size="sm">
-          Save
+        <Button type="submit" size="sm" disabled={!isDirty || isSaving}>
+          {isSaving ? (
+            <>
+              <LoaderIcon className="size-3 animate-spin" />
+              Saving…
+            </>
+          ) : (
+            "Save"
+          )}
         </Button>
       </div>
     </form>

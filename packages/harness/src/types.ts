@@ -6,6 +6,25 @@ import type { DynamicArgument } from '@mastra/core/types';
 import type { Workspace, WorkspaceConfig, WorkspaceStatus } from '@mastra/core/workspace';
 
 // =============================================================================
+// Model Settings
+// =============================================================================
+
+/**
+ * Per-request model generation settings passed to `agent.stream()`.
+ * Maps to Mastra's `modelSettings` (which is `Omit<CallSettings, 'abortSignal'>`).
+ */
+export interface HarnessModelSettings {
+  temperature?: number;
+  topP?: number;
+  topK?: number;
+  maxOutputTokens?: number;
+  maxRetries?: number;
+  seed?: number;
+  frequencyPenalty?: number;
+  presencePenalty?: number;
+}
+
+// =============================================================================
 // Heartbeat Handlers
 // =============================================================================
 
@@ -241,6 +260,12 @@ export interface HarnessConfig<TState = {}> {
     acquire: (threadId: string) => void | Promise<void>;
     release: (threadId: string) => void | Promise<void>;
   };
+
+  /**
+   * Model generation settings (temperature, topP, maxOutputTokens, etc.)
+   * passed to every `agent.stream()` call as `modelSettings`.
+   */
+  modelSettings?: HarnessModelSettings;
 }
 
 /**

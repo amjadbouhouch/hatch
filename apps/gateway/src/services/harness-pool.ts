@@ -4,7 +4,6 @@ import {
   createAgent,
   createWorkspace,
   DEFAULT_WORKSPACE_ID,
-  HARNESS_MODES,
   storage,
 } from './agent-factory.js';
 
@@ -37,16 +36,22 @@ export class HarnessPoolManager {
   // ── Private Helpers ─────────────────────────────────────────────────────
 
   private async _buildHarness(workspaceId: string): Promise<Harness> {
-    const agent = createAgent(workspaceId);
+    const { agent, modelSettings } = await createAgent(workspaceId);
 
     const harness = new Harness({
       id: crypto.randomUUID(),
       resourceId: workspaceId,
       storage,
-      // workspace is in the agent side :)
-      // workspace,
-      modes: HARNESS_MODES.map((m) => ({ ...m, agent })),
-      initialState: { yolo: true } as any,
+      modes: [
+        {
+          id: 'chat',
+          name: 'Chat',
+          default: true,
+          agent,
+        },
+      ],
+      initialState: { yolo: true },
+      modelSettings,
     });
 
     return harness;

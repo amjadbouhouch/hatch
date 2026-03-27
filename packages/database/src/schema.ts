@@ -4,6 +4,7 @@ import {
   sqliteTable,
   text,
   integer,
+  real,
   index,
   uniqueIndex,
 } from "drizzle-orm/sqlite-core";
@@ -87,21 +88,29 @@ export const knowledgeBases = sqliteTable(
   ],
 );
 
-// ─── Embedding Configs ───────────────────────────────────────────────────────
+// ─── Model Configs ──────────────────────────────────────────────────────────
 
-export const embeddingConfigs = sqliteTable(
-  "embedding_configs",
+export const modelConfigs = sqliteTable(
+  "model_configs",
   {
     id: text("id")
       .primaryKey()
       .$defaultFn(() => crypto.randomUUID()),
-    provider: text("provider").notNull(),
-    model: text("model").notNull(),
-    config: text("config", { mode: "json" })
-      .$type<Record<string, unknown>>()
-      .default({}),
+    model: text("model"),
+    apiKey: text("api_key"),
+    temperature: real("temperature"),
+    topP: real("top_p"),
+    topK: integer("top_k"),
+    maxTokens: integer("max_tokens"),
+    maxRetries: integer("max_retries").default(3),
+    seed: integer("seed"),
+    frequencyPenalty: real("frequency_penalty"),
+    presencePenalty: real("presence_penalty"),
+    providerOptions: text("provider_options", { mode: "json" })
+      .$type<Record<string, unknown>>(),
     workspaceId: text("workspace_id")
       .notNull()
+      .unique()
       .references(() => workspaces.id, { onDelete: "cascade" }),
     createdAt: text("created_at")
       .notNull()
@@ -110,7 +119,56 @@ export const embeddingConfigs = sqliteTable(
       .notNull()
       .default(sql`(current_timestamp)`),
   },
-  (t) => [index("idx_embed_workspace").on(t.workspaceId)],
+);
+
+// ─── Vision Configs ─────────────────────────────────────────────────────────
+
+export const visionConfigs = sqliteTable(
+  "vision_configs",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    model: text("model"),
+    apiKey: text("api_key"),
+    maxTokens: integer("max_tokens"),
+    providerOptions: text("provider_options", { mode: "json" })
+      .$type<Record<string, unknown>>(),
+    workspaceId: text("workspace_id")
+      .notNull()
+      .unique()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    createdAt: text("created_at")
+      .notNull()
+      .default(sql`(current_timestamp)`),
+    updatedAt: text("updated_at")
+      .notNull()
+      .default(sql`(current_timestamp)`),
+  },
+);
+
+// ─── Embedding Configs ──────────────────────────────────────────────────────
+
+export const embeddingConfigs = sqliteTable(
+  "embedding_configs",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    model: text("model"),
+    apiKey: text("api_key"),
+    dimension: integer("dimension"),
+    workspaceId: text("workspace_id")
+      .notNull()
+      .unique()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    createdAt: text("created_at")
+      .notNull()
+      .default(sql`(current_timestamp)`),
+    updatedAt: text("updated_at")
+      .notNull()
+      .default(sql`(current_timestamp)`),
+  },
 );
 
 // ─── Scheduled Jobs ──────────────────────────────────────────────────────────
@@ -148,10 +206,12 @@ export const scheduledJobs = sqliteTable(
 
 // ─── Relations ───────────────────────────────────────────────────────────────
 
-export const workspacesRelations = relations(workspaces, ({ many }) => ({
+export const workspacesRelations = relations(workspaces, ({ one, many }) => ({
   skills: many(skills),
   knowledgeBases: many(knowledgeBases),
-  embeddingConfigs: many(embeddingConfigs),
+  modelConfig: one(modelConfigs),
+  visionConfig: one(visionConfigs),
+  embeddingConfig: one(embeddingConfigs),
   scheduledJobs: many(scheduledJobs),
 }));
 
@@ -176,6 +236,26 @@ export const knowledgeBasesRelations = relations(
     }),
     children: many(knowledgeBases, {
       relationName: "knowledgeBaseHierarchy",
+    }),
+  }),
+);
+
+export const modelConfigsRelations = relations(
+  modelConfigs,
+  ({ one }) => ({
+    workspace: one(workspaces, {
+      fields: [modelConfigs.workspaceId],
+      references: [workspaces.id],
+    }),
+  }),
+);
+
+export const visionConfigsRelations = relations(
+  visionConfigs,
+  ({ one }) => ({
+    workspace: one(workspaces, {
+      fields: [visionConfigs.workspaceId],
+      references: [workspaces.id],
     }),
   }),
 );
@@ -210,6 +290,12 @@ export type NewSkill = InferInsertModel<typeof skills>;
 
 export type KnowledgeBase = InferSelectModel<typeof knowledgeBases>;
 export type NewKnowledgeBase = InferInsertModel<typeof knowledgeBases>;
+
+export type ModelConfig = InferSelectModel<typeof modelConfigs>;
+export type NewModelConfig = InferInsertModel<typeof modelConfigs>;
+
+export type VisionConfig = InferSelectModel<typeof visionConfigs>;
+export type NewVisionConfig = InferInsertModel<typeof visionConfigs>;
 
 export type EmbeddingConfig = InferSelectModel<typeof embeddingConfigs>;
 export type NewEmbeddingConfig = InferInsertModel<typeof embeddingConfigs>;

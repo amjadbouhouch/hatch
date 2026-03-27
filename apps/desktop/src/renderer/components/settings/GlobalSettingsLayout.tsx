@@ -8,7 +8,6 @@ import {
 } from "@/components/ui/sidebar";
 import { ChatHeader } from "../layout/ChatHeader";
 import {
-  BoxesIcon,
   KeyIcon,
   PaletteIcon,
   ServerIcon,
@@ -18,10 +17,9 @@ import {
 import { useActiveTab } from "../../stores/ui-store.js";
 
 const NAV_ITEMS = [
-  { label: "Embeddings", href: "", icon: BoxesIcon },
+  { label: "Appearance", href: "", icon: PaletteIcon },
   { label: "Gateway", href: "/gateway", icon: ServerIcon },
   { label: "API Keys", href: "/keys", icon: KeyIcon },
-  { label: "Appearance", href: "/appearance", icon: PaletteIcon },
 ];
 
 export function GlobalSettingsLayout() {

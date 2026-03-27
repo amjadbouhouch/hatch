@@ -1,11 +1,11 @@
 import { Hono } from 'hono';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { db, workspaces, asc } from '@hatch/database';
+import { db, workspaces, modelConfigs, embeddingConfigs, asc } from '@hatch/database';
 import { zValidator } from '../middleware/zod-validator.js';
 import { z } from 'zod';
 import { HATCH_HOME } from '../services/agent-factory.js';
-import { DEFAULT_MEMORY, DEFAULT_SKILLS } from '../templates.js';
+import { DEFAULT_MEMORY, DEFAULT_SKILLS, DEFAULT_MODEL_CONFIG, DEFAULT_EMBEDDING_CONFIG } from '../templates.js';
 import { installSkillToWorkspace } from './skills.js';
 
 const CreateWorkspaceBody = z.object({
@@ -40,6 +40,10 @@ export const workspaceRoutes = new Hono()
       .insert(workspaces)
       .values({ name, agentName, description })
       .returning();
+
+    // Seed default configs
+    await db.insert(modelConfigs).values({ workspaceId: ws.id, ...DEFAULT_MODEL_CONFIG });
+    await db.insert(embeddingConfigs).values({ workspaceId: ws.id, ...DEFAULT_EMBEDDING_CONFIG });
 
     // Write SOUL.md + IDENTITY.md to workspace directory
     const { DEFAULT_SOUL, DEFAULT_IDENTITY } = await import('../templates.js');

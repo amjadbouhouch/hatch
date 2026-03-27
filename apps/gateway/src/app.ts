@@ -12,6 +12,7 @@ import { workspaceRoutes } from './routes/workspaces.js';
 import { skillRoutes } from './routes/skills.js';
 import { scheduleRoutes } from './routes/schedules.js';
 import { knowledgeRoutes } from './routes/knowledge.js';
+import { configRoutes } from './routes/configs.js';
 
 // Resolve auth once at module load
 const auth = resolveAuth();
@@ -28,7 +29,8 @@ const app = new Hono()
   .route('/', workspaceRoutes)
   .route('/', skillRoutes)
   .route('/', scheduleRoutes)
-  .route('/', knowledgeRoutes);
+  .route('/', knowledgeRoutes)
+  .route('/', configRoutes);
 
 export type AppType = typeof app;
 

@@ -211,6 +211,17 @@ export const DEFAULT_SKILLS = [
 
 export type DefaultSkill = (typeof DEFAULT_SKILLS)[number];
 
+// ─── Default Configs ────────────────────────────────────────────────────────
+
+export const DEFAULT_MODEL_CONFIG = {
+  model: 'openrouter/xiaomi/mimo-v2-pro',
+} as const;
+
+export const DEFAULT_EMBEDDING_CONFIG = {
+  model: 'openrouter/openai/text-embedding-3-small',
+  dimension: 1536,
+} as const;
+
 export const DEFAULT_MEMORY = `# Memory
 
 _Curated long-term. Update this file as you learn important things._
