@@ -13,6 +13,7 @@ import { mkdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { scheduleTools } from '../tools/schedule-tools.js';
+import { visionTools } from '../tools/vision-tools.js';
 
 export const HATCH_HOME = process.env.HATCH_HOME ?? join(homedir(), '.hatch');
 export const DEFAULT_SKILLS_DIR = join(HATCH_HOME, 'default-skills');
@@ -117,6 +118,16 @@ export async function createWorkspace(workspaceId: string) {
       id: workspaceId,
       containerName: `hatch-sandbox-${workspaceId}`,
       image: 'hatch-sandbox',
+      resourceLimits: {
+        memory: process.env.SANDBOX_MEMORY ?? '512m',
+        cpus: process.env.SANDBOX_CPUS ?? '1',
+        pidsLimit: Number(process.env.SANDBOX_PIDS_LIMIT) || 256,
+        tmpfsSize: process.env.SANDBOX_TMPFS_SIZE ?? '100m',
+      },
+      networkOptions: {
+        network: process.env.SANDBOX_NETWORK ?? 'bridge',
+      },
+      readOnly: process.env.SANDBOX_READ_ONLY !== 'false',
       instructions(opts) {
         return opts.defaultInstructions + `\n All your work must be inside projects folder.`;
       },
@@ -180,7 +191,7 @@ export async function createAgent(workspaceId: string): Promise<CreateAgentResul
       id: config.model as `${string}/${string}`,
       apiKey: config.apiKey ?? undefined,
     },
-    tools: scheduleTools,
+    tools: { ...scheduleTools, ...visionTools },
     memory: new Memory({
       storage,
       options: {

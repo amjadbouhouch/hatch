@@ -38,6 +38,10 @@ Your sandbox has these libraries already installed. Use them directly — do NOT
 
 Python: numpy, pandas, openpyxl, pyyaml, pypdf, pdfplumber, reportlab, weasyprint, pytesseract, pdf2image, Pillow, matplotlib, requests, beautifulsoup4, python-docx, python-pptx
 System: poppler-utils (pdftotext, pdfimages), qpdf, tesseract-ocr, Node.js, npm, git, curl, bash
+
+## Image Analysis
+When the user shares an image file (png, jpg, gif, webp), use the read_image tool to see its contents.
+Pass the workspace-relative file path and optionally a prompt describing what to focus on (e.g. "Extract all text", "Describe the chart").
 `.trim();
 
 export function buildInstructions(soul: string, identity: string): string {

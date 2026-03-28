@@ -19,6 +19,22 @@ const execFileAsync = promisify(execFile);
 
 
 
+export interface SandboxResourceLimits {
+  /** Max memory (e.g. '512m', '1g'). Default: '512m' */
+  memory?: string;
+  /** CPU quota (e.g. '1', '0.5'). Default: '1' */
+  cpus?: string;
+  /** Max PIDs inside container. Default: 256 */
+  pidsLimit?: number;
+  /** Tmpfs size for /tmp (e.g. '100m'). Default: '100m' */
+  tmpfsSize?: string;
+}
+
+export interface SandboxNetworkOptions {
+  /** Docker network mode. Default: 'none' (fully isolated) */
+  network?: string;
+}
+
 export interface DockerSandboxOptions extends MastraSandboxOptions {
   id?: string;
   image?: string;
@@ -30,6 +46,12 @@ export interface DockerSandboxOptions extends MastraSandboxOptions {
   dockerPath?: string;
   containerName?: string;
   extraRunArgs?: string[];
+  /** Resource limits for the container */
+  resourceLimits?: SandboxResourceLimits;
+  /** Network isolation settings */
+  networkOptions?: SandboxNetworkOptions;
+  /** Run the container filesystem as read-only. Default: true */
+  readOnly?: boolean;
 }
 
 export class DockerSandbox extends MastraSandbox {
@@ -49,6 +71,9 @@ export class DockerSandbox extends MastraSandbox {
   private readonly _defaultTimeout: number;
   private readonly _dockerPath: string;
   private readonly _extraRunArgs: string[];
+  private readonly _resourceLimits: Required<SandboxResourceLimits>;
+  private readonly _network: string;
+  private readonly _readOnly: boolean;
   private readonly _instructionsOverride: InstructionsOption | undefined;
   private readonly _createdAt: Date;
   private _cleanupHandlers: Array<() => void> = [];
@@ -71,6 +96,14 @@ export class DockerSandbox extends MastraSandbox {
     this._dockerPath = options.dockerPath ?? 'docker';
     this._containerName = options.containerName ?? `hatch-sandbox-${this.id}`;
     this._extraRunArgs = options.extraRunArgs ?? [];
+    this._resourceLimits = {
+      memory: options.resourceLimits?.memory ?? '512m',
+      cpus: options.resourceLimits?.cpus ?? '1',
+      pidsLimit: options.resourceLimits?.pidsLimit ?? 256,
+      tmpfsSize: options.resourceLimits?.tmpfsSize ?? '100m',
+    };
+    this._network = options.networkOptions?.network ?? 'none';
+    this._readOnly = options.readOnly ?? true;
     this._instructionsOverride = options.instructions;
     this._createdAt = new Date();
 
@@ -314,7 +347,10 @@ export class DockerSandbox extends MastraSandbox {
       `Docker sandbox (image: ${this._image}).`,
       `Working directory: ${this._containerWorkDir}.`,
       `Commands execute inside an isolated container.`,
-    ].join(' ');
+      `Resource limits: ${this._resourceLimits.memory} memory, ${this._resourceLimits.cpus} CPU(s), ${this._resourceLimits.pidsLimit} max PIDs.`,
+      this._network === 'none' ? `No network access.` : `Network: ${this._network}.`,
+      this._readOnly ? `Filesystem is read-only except mounted volumes and /tmp.` : '',
+    ].filter(Boolean).join(' ');
 
     if (typeof this._instructionsOverride === 'string') {
       return this._instructionsOverride;
@@ -372,6 +408,24 @@ export class DockerSandbox extends MastraSandbox {
       '-w',
       this._containerWorkDir,
     ];
+
+    // Resource limits
+    args.push(
+      '--memory', this._resourceLimits.memory,
+      '--cpus', this._resourceLimits.cpus,
+      '--pids-limit', String(this._resourceLimits.pidsLimit),
+    );
+
+    // Network isolation
+    args.push('--network', this._network);
+
+    // Read-only filesystem with writable /tmp
+    if (this._readOnly) {
+      args.push(
+        '--read-only',
+        '--tmpfs', `/tmp:size=${this._resourceLimits.tmpfsSize}`,
+      );
+    }
 
     // Primary bind mount (when workingDirectory is set explicitly)
     if (this._hostWorkDir) {

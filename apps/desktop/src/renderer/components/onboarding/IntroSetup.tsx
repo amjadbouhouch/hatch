@@ -1,9 +1,6 @@
 import { useState, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import {
-  EggIcon,
-  ArrowRightIcon,
-} from "lucide-react";
+import { ArrowRightIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -136,9 +133,20 @@ export function IntroSetup() {
           </Card>
         </motion.div>
 
-      {/* Footer: Big HATCH logo (absolute so it doesn't affect centering) */}
+      {/* Footer: Dino + HATCH logo */}
       <div className="absolute bottom-6 left-0 right-0 z-20 flex items-center justify-center gap-4 px-8">
-        <EggIcon className="size-24 text-foreground shrink-0" strokeWidth={1.5} />
+        <motion.img
+          src="/images/identity-removebg.png"
+          alt="Hatch mascot"
+          className="size-40 shrink-0 drop-shadow-md"
+          // initial={{ opacity: 0, scale: 0.8 }}
+          // animate={{ opacity: 1, scale: 1, y: [0, -4, 0] }}
+          // transition={{
+          //   opacity: { duration: 0.5, delay: 0.2 },
+          //   scale: { duration: 0.5, delay: 0.2 },
+          //   y: { duration: 2.5, repeat: Infinity, ease: "easeInOut", delay: 0.8 },
+          // }}
+        />
         <FluidText
           text="HATCH"
           className="text-9xl font-extrabold tracking-widest text-foreground"

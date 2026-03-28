@@ -1,7 +1,7 @@
-import { useState, useId } from "react";
+import { useState, useEffect, useId } from "react";
+import { useParams, useNavigate } from "react-router-dom";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -13,152 +13,113 @@ import {
   DialogTrigger,
   DialogClose,
 } from "@/components/ui/dialog";
-import { CopyIcon } from "lucide-react";
-
-// ─── Mock data ──────────────────────────────────────────────────────────────
-
-const MOCK = {
-  name: "My Coder Workspace",
-  agentName: "hatch-coder",
-  description: "Code reviewer, debugger, and task planner for daily dev work.",
-  template: "coder" as const,
-  createdAt: "2026-03-20T14:30:00Z",
-};
+import { LoaderIcon } from "lucide-react";
+import { useWorkspace, useUpdateWorkspace, useDeleteWorkspace } from "../../hooks/use-configs.js";
 
 // ─── Component ──────────────────────────────────────────────────────────────
 
 export function GeneralSettings() {
-  const [name, setName] = useState(MOCK.name);
-  const [agentName, setAgentName] = useState(MOCK.agentName);
-  const [description, setDescription] = useState(MOCK.description);
+  const { workspaceId } = useParams<{ workspaceId: string }>();
+  const navigate = useNavigate();
+  const { data: workspace, isLoading } = useWorkspace(workspaceId);
+  const { mutate: update, isPending: isSaving } = useUpdateWorkspace();
+  const { mutate: deleteWs, isPending: isDeleting } = useDeleteWorkspace();
+
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [loaded, setLoaded] = useState(false);
 
   const id = useId();
-  const nameId = `${id}-name`;
-  const agentId = `${id}-agent`;
-  const descId = `${id}-desc`;
+
+  useEffect(() => {
+    if (!workspace) return;
+    setName(workspace.name ?? "");
+    setDescription(workspace.description ?? "");
+    setLoaded(true);
+  }, [workspace]);
 
   const isDirty =
-    name !== MOCK.name ||
-    agentName !== MOCK.agentName ||
-    description !== MOCK.description;
+    loaded && (
+      name !== (workspace?.name ?? "") ||
+      description !== (workspace?.description ?? "")
+    );
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!workspaceId) return;
+    update({ workspaceId, name: name || undefined, description: description || null });
+  }
+
+  function handleDelete() {
+    if (!workspaceId) return;
+    deleteWs(workspaceId, { onSuccess: () => navigate("/") });
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <LoaderIcon className="size-4 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8">
-      {/* Workspace form */}
-      <form
-        className="space-y-5"
-        onSubmit={(e) => {
-          e.preventDefault();
-          // TODO: persist settings
-        }}
-      >
-        <Field label="Name" htmlFor={nameId}>
-          <Input
-            id={nameId}
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-          />
+      <form className="space-y-5" onSubmit={handleSubmit}>
+        <Field label="Name" htmlFor={`${id}-name`}>
+          <Input id={`${id}-name`} value={name} onChange={(e) => setName(e.target.value)} />
         </Field>
 
-        <Field label="Agent name" htmlFor={agentId} hint="Identifier used in API calls and logs.">
-          <Input
-            id={agentId}
-            value={agentName}
-            onChange={(e) => setAgentName(e.target.value)}
-            className="font-mono text-xs"
-            spellCheck={false}
-          />
+        <Field label="Description" htmlFor={`${id}-desc`}>
+          <Textarea id={`${id}-desc`} value={description} onChange={(e) => setDescription(e.target.value)} rows={3} className="resize-none" />
         </Field>
 
-        <Field label="Description" htmlFor={descId}>
-          <Textarea
-            id={descId}
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            rows={3}
-            className="resize-none"
-          />
-        </Field>
-
-        <div className="flex justify-end gap-2 pt-1">
-          <Button type="button" variant="outline" size="sm" className="gap-1.5">
-            <CopyIcon className="size-3" aria-hidden="true" />
-            Duplicate workspace
-          </Button>
-          <Button type="submit" size="sm" disabled={!isDirty}>
-            Save
+        <div className="flex justify-end pt-1">
+          <Button type="submit" size="sm" disabled={!isDirty || isSaving}>
+            {isSaving ? <><LoaderIcon className="size-3 animate-spin" /> Saving…</> : "Save"}
           </Button>
         </div>
       </form>
 
       <hr className="border-border" />
 
-      {/* Read-only info */}
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-1.5">
-          <span className="text-xs font-medium text-foreground">Template</span>
-          <div>
-            <Badge variant="secondary" className="text-[11px]">
-              {MOCK.template}
-            </Badge>
+      {workspace?.createdAt && (
+        <>
+          <div className="space-y-1.5">
+            <span className="text-xs font-medium text-foreground">Created</span>
+            <p className="text-xs text-muted-foreground">
+              {new Date(workspace.createdAt).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}
+            </p>
           </div>
-        </div>
+          <hr className="border-border" />
+        </>
+      )}
 
-        <div className="space-y-1.5">
-          <span className="text-xs font-medium text-foreground">Created</span>
-          <p className="text-xs text-muted-foreground">
-            {new Date(MOCK.createdAt).toLocaleDateString("en-US", {
-              year: "numeric",
-              month: "long",
-              day: "numeric",
-            })}
-          </p>
-        </div>
-      </div>
-
-      <hr className="border-border" />
-
-      {/* Danger zone */}
       <div className="space-y-3">
         <p className="text-xs font-medium text-destructive-foreground">Danger zone</p>
-
-        <div className="flex flex-wrap gap-2">
-          <Dialog>
-            <DialogTrigger asChild>
-              <Button
-                variant="outline"
-                size="sm"
-                className="text-destructive-foreground border-destructive/30 hover:bg-destructive/5"
-              >
-                Delete workspace
+        <Dialog>
+          <DialogTrigger asChild>
+            <Button variant="outline" size="sm" className="text-destructive-foreground border-destructive/30 hover:bg-destructive/5">
+              Delete workspace
+            </Button>
+          </DialogTrigger>
+          <DialogContent showCloseButton={false}>
+            <DialogHeader>
+              <DialogTitle>Delete workspace</DialogTitle>
+              <DialogDescription>
+                This will permanently delete <span className="font-medium text-foreground">{name}</span> and all its threads. This action cannot be undone.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <DialogClose asChild>
+                <Button variant="outline" size="sm">Cancel</Button>
+              </DialogClose>
+              <Button variant="outline" size="sm" className="text-destructive-foreground border-destructive/30 hover:bg-destructive/5" onClick={handleDelete} disabled={isDeleting}>
+                {isDeleting ? <><LoaderIcon className="size-3 animate-spin" /> Deleting…</> : "Delete"}
               </Button>
-            </DialogTrigger>
-            <DialogContent showCloseButton={false}>
-              <DialogHeader>
-                <DialogTitle>Delete workspace</DialogTitle>
-                <DialogDescription>
-                  This will permanently delete{" "}
-                  <span className="font-medium text-foreground">{name}</span>{" "}
-                  and all its threads. This action cannot be undone.
-                </DialogDescription>
-              </DialogHeader>
-              <DialogFooter>
-                <DialogClose asChild>
-                  <Button variant="outline" size="sm">
-                    Cancel
-                  </Button>
-                </DialogClose>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="text-destructive-foreground border-destructive/30 hover:bg-destructive/5"
-                >
-                  Delete
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-        </div>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );
@@ -166,26 +127,12 @@ export function GeneralSettings() {
 
 // ─── Field ──────────────────────────────────────────────────────────────────
 
-function Field({
-  label,
-  htmlFor,
-  hint,
-  children,
-}: {
-  label: string;
-  htmlFor?: string;
-  hint?: React.ReactNode;
-  children: React.ReactNode;
-}) {
+function Field({ label, htmlFor, hint, children }: { label: string; htmlFor?: string; hint?: React.ReactNode; children: React.ReactNode }) {
   return (
     <div className="space-y-1.5">
-      <label htmlFor={htmlFor} className="text-xs font-medium text-foreground">
-        {label}
-      </label>
+      <label htmlFor={htmlFor} className="text-xs font-medium text-foreground">{label}</label>
       {children}
-      {hint && (
-        <p className="text-[11px] text-muted-foreground/70">{hint}</p>
-      )}
+      {hint && <p className="text-[11px] text-muted-foreground/70">{hint}</p>}
     </div>
   );
 }

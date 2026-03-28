@@ -13,6 +13,57 @@ import type {
 // Re-export for consumers
 export type { ModelConfig, VisionConfig, EmbeddingConfig };
 
+// ─── Workspace ──────────────────────────────────────────────────────────────
+
+export function useWorkspace(workspaceId: string | undefined) {
+  return useQuery({
+    queryKey: ['workspace', workspaceId] as const,
+    queryFn: async () => {
+      const api = await getClient();
+      const res = await api.workspaces[':workspaceId'].$get({ param: { workspaceId: workspaceId! } });
+      if (!res.ok) throw new Error('Workspace not found');
+      return res.json();
+    },
+    enabled: !!workspaceId,
+  });
+}
+
+export function useUpdateWorkspace() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (params: { workspaceId: string; name?: string; agentName?: string; description?: string | null }) => {
+      const { workspaceId, ...data } = params;
+      const api = await getClient();
+      const res = await api.workspaces[':workspaceId'].$patch({ param: { workspaceId }, json: data });
+      if (!res.ok) throw new Error('Failed to update workspace');
+      return res.json();
+    },
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ['workspace', vars.workspaceId] });
+      qc.invalidateQueries({ queryKey: ['workspaces'] });
+      toast.success('Workspace settings saved');
+    },
+    onError: () => toast.error('Failed to save workspace settings'),
+  });
+}
+
+export function useDeleteWorkspace() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (workspaceId: string) => {
+      const api = await getClient();
+      const res = await api.workspaces[':workspaceId'].$delete({ param: { workspaceId } });
+      if (!res.ok) throw new Error('Failed to delete workspace');
+      return res.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['workspaces'] });
+      toast.success('Workspace deleted');
+    },
+    onError: () => toast.error('Failed to delete workspace'),
+  });
+}
+
 // ─── Model Config ───────────────────────────────────────────────────────────
 
 export function useModelConfig(workspaceId: string | undefined) {
