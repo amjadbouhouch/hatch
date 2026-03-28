@@ -99,6 +99,7 @@ export class Harness<TState extends HarnessStateSchema<any> = HarnessStateSchema
     completionTokens: 0,
     totalTokens: 0,
   };
+  private titleEmitted = false;
   private sessionGrantedCategories = new Set<string>();
   private sessionGrantedTools = new Set<string>();
   private displayState: HarnessDisplayState = defaultDisplayState();
@@ -701,6 +702,7 @@ export class Harness<TState extends HarnessStateSchema<any> = HarnessStateSchema
     }
 
     this.tokenUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
+    this.titleEmitted = false;
     this.emit({ type: 'thread_created', thread });
 
     return thread;
@@ -840,6 +842,7 @@ export class Harness<TState extends HarnessStateSchema<any> = HarnessStateSchema
     }
 
     this.currentThreadId = threadId;
+    this.titleEmitted = false;
 
     await this.loadThreadMetadata();
 
@@ -1351,6 +1354,10 @@ export class Harness<TState extends HarnessStateSchema<any> = HarnessStateSchema
         ...(this.config.modelSettings && { modelSettings: this.config.modelSettings }),
       });
       await this.processStream(response, requestContext);
+
+      if (!this.titleEmitted) {
+        this.checkForGeneratedTitle().catch(() => {});
+      }
 
       if (this.currentOperationId === operationId) {
         if (this.interruptForFollowUp) {
@@ -2912,6 +2919,9 @@ export class Harness<TState extends HarnessStateSchema<any> = HarnessStateSchema
         }
         break;
 
+      case 'thread_renamed':
+        break;
+
       // ── State changes (for OM threshold overrides) ──────────────────────
       case 'state_changed': {
         const keys = event.changedKeys;
@@ -3059,6 +3069,20 @@ export class Harness<TState extends HarnessStateSchema<any> = HarnessStateSchema
       }
     } catch {
       // Token persistence is not critical
+    }
+  }
+
+  private async checkForGeneratedTitle(): Promise<void> {
+    if (!this.currentThreadId || !this.config.storage) return;
+    try {
+      const memoryStorage = await this.getMemoryStorage();
+      const thread = await memoryStorage.getThreadById({ threadId: this.currentThreadId });
+      if (thread?.title) {
+        this.titleEmitted = true;
+        this.emit({ type: 'thread_renamed', threadId: this.currentThreadId, title: thread.title });
+      }
+    } catch {
+      // Title check is not critical
     }
   }
 

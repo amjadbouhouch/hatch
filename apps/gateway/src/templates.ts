@@ -204,9 +204,6 @@ export const DEFAULT_SKILLS = [
   { skillId: 'frontend-design', owner: 'anthropics', repo: 'skills' },
   { skillId: 'agent-browser', owner: 'vercel-labs', repo: 'agent-browser' },
   { skillId: 'find-skills', owner: 'vercel-labs', repo: 'skills' },
-  { skillId: 'pdf', owner: 'anthropics', repo: 'skills' },
-  { skillId: 'excel', owner: 'sundial-org', repo: 'awesome-openclaw-skills' },
-  { skillId: 'pptx', owner: 'anthropics', repo: 'skills' },
 ] as const;
 
 export type DefaultSkill = (typeof DEFAULT_SKILLS)[number];

@@ -19,6 +19,7 @@ import { indexFile, removeFileIndex } from '../services/knowledge-indexer.js';
 
 const ALLOWED_EXTENSIONS = new Set(['.md', '.txt', '.pdf', '.json', '.csv', '.xlsx', '.xls', '.png', '.jpg', '.jpeg', '.gif', '.webp']);
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
+const PROTECTED_FILES = new Set(['SOUL.md', 'IDENTITY.md', 'memory/MEMORY.md']);
 
 function getWorkspaceDir(workspaceId: string): string {
   return join(HATCH_HOME, 'workspaces', workspaceId);
@@ -171,7 +172,7 @@ export const knowledgeRoutes = new Hono()
           z.object({
             name: z.string().min(1),
             content: z.string().min(1), // base64-encoded
-            path: z.string().default(''), // subfolder path
+            path: z.string().default(''), // subfolder path relative to workspace root
           }),
         ).min(1),
       }),
@@ -179,7 +180,7 @@ export const knowledgeRoutes = new Hono()
     async (c) => {
       const workspaceId = c.req.param('workspaceId');
       const { files } = c.req.valid('json');
-      const knowledgeDir = getKnowledgeDir(workspaceId);
+      const wsDir = getWorkspaceDir(workspaceId);
 
       const results: Array<{ name: string; path: string; size: number; ok: boolean; error?: string }> = [];
 
@@ -197,35 +198,45 @@ export const knowledgeRoutes = new Hono()
         }
 
         const targetDir = file.path
-          ? safePath(knowledgeDir, file.path)
-          : knowledgeDir;
+          ? safePath(wsDir, file.path)
+          : wsDir;
 
         if (!targetDir) {
           results.push({ name: file.name, path: file.path, size: 0, ok: false, error: 'Invalid path' });
           continue;
         }
 
-        mkdirSync(targetDir, { recursive: true });
         const filePath = join(targetDir, basename(file.name));
 
-        // Final safety check
-        if (!filePath.startsWith(knowledgeDir)) {
+        // Final safety check — must stay inside workspace
+        if (!filePath.startsWith(wsDir)) {
           results.push({ name: file.name, path: file.path, size: 0, ok: false, error: 'Invalid path' });
           continue;
         }
 
+        // Prevent overwriting protected files
+        const relPath = relative(wsDir, filePath).replace(/\\/g, '/');
+        if (PROTECTED_FILES.has(relPath)) {
+          results.push({ name: file.name, path: file.path, size: 0, ok: false, error: 'Cannot overwrite protected file' });
+          continue;
+        }
+
+        mkdirSync(targetDir, { recursive: true });
         writeFileSync(filePath, buffer);
-        const relFromWorkspace = `knowledge/${file.path ? file.path + '/' : ''}${basename(file.name)}`.replace(/\/+/g, '/');
+
         results.push({
           name: file.name,
-          path: relative(knowledgeDir, filePath).replace(/\\/g, '/'),
+          path: relPath,
           size: buffer.length,
           ok: true,
         });
-        // Index async — don't block the response
-        indexFile(workspaceId, relFromWorkspace).catch((err) =>
-          console.error(`[knowledge] index error for "${relFromWorkspace}":`, err),
-        );
+
+        // Only index files that land under knowledge/
+        if (relPath.startsWith('knowledge/')) {
+          indexFile(workspaceId, relPath).catch((err) =>
+            console.error(`[knowledge] index error for "${relPath}":`, err),
+          );
+        }
       }
 
       return c.json({ results }, 201);
@@ -244,9 +255,9 @@ export const knowledgeRoutes = new Hono()
     async (c) => {
       const workspaceId = c.req.param('workspaceId');
       const { path } = c.req.valid('json');
-      const knowledgeDir = getKnowledgeDir(workspaceId);
+      const wsDir = getWorkspaceDir(workspaceId);
 
-      const targetDir = safePath(knowledgeDir, path);
+      const targetDir = safePath(wsDir, path);
       if (!targetDir) {
         return c.json({ error: 'Invalid path' }, 400);
       }
@@ -269,10 +280,10 @@ export const knowledgeRoutes = new Hono()
     async (c) => {
       const workspaceId = c.req.param('workspaceId');
       const { from, to } = c.req.valid('json');
-      const knowledgeDir = getKnowledgeDir(workspaceId);
+      const wsDir = getWorkspaceDir(workspaceId);
 
-      const fromPath = safePath(knowledgeDir, from);
-      const toPath = safePath(knowledgeDir, to);
+      const fromPath = safePath(wsDir, from);
+      const toPath = safePath(wsDir, to);
 
       if (!fromPath || !toPath) {
         return c.json({ error: 'Invalid path' }, 400);
@@ -282,19 +293,29 @@ export const knowledgeRoutes = new Hono()
         return c.json({ error: 'Source not found' }, 404);
       }
 
+      // Prevent moving protected files
+      const fromRel = relative(wsDir, fromPath).replace(/\\/g, '/');
+      if (PROTECTED_FILES.has(fromRel)) {
+        return c.json({ error: 'Cannot move protected file' }, 403);
+      }
+
       // Ensure target parent directory exists
       mkdirSync(dirname(toPath), { recursive: true });
       renameSync(fromPath, toPath);
 
-      const wsDir = join(HATCH_HOME, 'workspaces', workspaceId);
-      const oldRel = relative(wsDir, fromPath).replace(/\\/g, '/');
+      const oldRel = fromRel;
       const newRel = relative(wsDir, toPath).replace(/\\/g, '/');
-      removeFileIndex(workspaceId, oldRel).catch((err) =>
-        console.error(`[knowledge] remove index error for "${oldRel}":`, err),
-      );
-      indexFile(workspaceId, newRel).catch((err) =>
-        console.error(`[knowledge] index error for "${newRel}":`, err),
-      );
+      // Re-index if either source or destination is in knowledge/
+      if (oldRel.startsWith('knowledge/')) {
+        removeFileIndex(workspaceId, oldRel).catch((err) =>
+          console.error(`[knowledge] remove index error for "${oldRel}":`, err),
+        );
+      }
+      if (newRel.startsWith('knowledge/')) {
+        indexFile(workspaceId, newRel).catch((err) =>
+          console.error(`[knowledge] index error for "${newRel}":`, err),
+        );
+      }
 
       return c.json({ ok: true, from, to });
     },
@@ -314,10 +335,10 @@ export const knowledgeRoutes = new Hono()
       const { path } = c.req.valid('json');
       const wsDir = getWorkspaceDir(workspaceId);
 
-      // Only allow deleting inside knowledge/ or projects/
+      // Prevent deleting protected files
       const normalizedPath = path.replace(/\\/g, '/');
-      if (!normalizedPath.startsWith('knowledge/') && !normalizedPath.startsWith('projects/')) {
-        return c.json({ error: 'Cannot delete files outside knowledge/ and projects/' }, 403);
+      if (PROTECTED_FILES.has(normalizedPath)) {
+        return c.json({ error: 'Cannot delete protected file' }, 403);
       }
 
       const targetPath = safePath(wsDir, path);

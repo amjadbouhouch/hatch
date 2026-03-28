@@ -565,7 +565,7 @@ export function ChatView() {
         const uploadFiles: UploadFile[] = files.map((f) => ({
           name: f.filename ?? "attachment",
           content: f.url?.split(",")[1] ?? "",
-          path: `threads/${threadId}`,
+          path: `knowledge/threads/${threadId}`,
         }));
 
         try {

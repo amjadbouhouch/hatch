@@ -1,0 +1,39 @@
+FROM python:3.12-alpine
+
+RUN apk add --no-cache \
+    nodejs \
+    npm \
+    git \
+    curl \
+    bash \
+    build-base
+
+RUN apk add --no-cache \
+    poppler-utils \
+    qpdf \
+    tesseract-ocr \
+    pango \
+    fontconfig \
+    ttf-freefont
+
+RUN pip install --no-cache-dir --break-system-packages \
+    requests \
+    numpy \
+    pandas \
+    openpyxl \
+    matplotlib \
+    Pillow \
+    beautifulsoup4 \
+    pyyaml \
+    python-docx \
+    python-pptx \
+    pypdf \
+    pdfplumber \
+    reportlab \
+    pytesseract \
+    pdf2image \
+    weasyprint
+
+WORKDIR /workspace
+
+CMD ["tail", "-f", "/dev/null"]

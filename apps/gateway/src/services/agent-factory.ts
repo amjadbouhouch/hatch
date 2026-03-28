@@ -4,7 +4,8 @@ import type { HarnessModelSettings } from '@hatch/harness';
 import { Mastra } from '@mastra/core';
 import { Agent } from '@mastra/core/agent';
 import { ModelRouterEmbeddingModel } from '@mastra/core/llm';
-import { LocalFilesystem, LocalSandbox, Workspace, WORKSPACE_TOOLS } from '@mastra/core/workspace';
+import { LocalFilesystem, Workspace, WORKSPACE_TOOLS } from '@mastra/core/workspace';
+import { DockerSandbox } from './docker-sandbox.js';
 import { LibSQLStore, LibSQLVector } from '@mastra/libsql';
 import { Memory } from '@mastra/memory';
 import { embed } from 'ai';
@@ -14,6 +15,7 @@ import { join } from 'node:path';
 import { scheduleTools } from '../tools/schedule-tools.js';
 
 export const HATCH_HOME = process.env.HATCH_HOME ?? join(homedir(), '.hatch');
+export const DEFAULT_SKILLS_DIR = join(HATCH_HOME, 'default-skills');
 export const HATCH_DB_DIR = join(HATCH_HOME, '.db');
 
 // Ensure db directory exists
@@ -51,7 +53,7 @@ async function loadEmbeddingConfig(workspaceId: string) {
 
 // ─── Workspace ──────────────────────────────────────────────────────────────
 
-export async function createWorkspace(workspaceId: string): Promise<Workspace> {
+export async function createWorkspace(workspaceId: string) {
   const basePath = join(HATCH_HOME, 'workspaces', workspaceId);
   const skillsDir = join(basePath, 'skills');
   const knowledgeDir = join(basePath, 'knowledge');
@@ -64,7 +66,7 @@ export async function createWorkspace(workspaceId: string): Promise<Workspace> {
   mkdirSync(projects, { recursive: true });
   mkdirSync(join(memoryDir, 'daily'), { recursive: true });
 
-  const skillPaths = [skillsDir];
+  const skillPaths = ['/workspace/skills'];
 
   // Load embedding config from DB
   const embeddingConfig = await loadEmbeddingConfig(workspaceId);
@@ -102,19 +104,22 @@ export async function createWorkspace(workspaceId: string): Promise<Workspace> {
     id,
     searchIndexName,
     name: `Workspace ${workspaceId}`,
-    filesystem: new LocalFilesystem({
-      basePath,
-      contained: true,
-      onInit({ filesystem }) {
-        console.log(`onInit called for ${id}`);
-      },
-    }),
-    sandbox: new LocalSandbox({
-      workingDirectory: basePath,
+    mounts: {
+      '/workspace': new LocalFilesystem({
+        basePath,
+        contained: true,
+        onInit({ filesystem }) {
+          console.log(`onInit called for ${id}`);
+        },
+      }),
+    },
+    sandbox: new DockerSandbox({
+      id: workspaceId,
+      containerName: `hatch-sandbox-${workspaceId}`,
+      image: 'hatch-sandbox',
       instructions(opts) {
         return opts.defaultInstructions + `\n All your work must be inside projects folder.`;
       },
-      env: {},
     }),
     bm25: true,
     vectorStore,

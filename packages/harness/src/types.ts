@@ -647,6 +647,7 @@ export type HarnessEvent =
   | { type: 'thread_changed'; threadId: string; previousThreadId: string | null }
   | { type: 'thread_created'; thread: HarnessThread }
   | { type: 'thread_deleted'; threadId: string }
+  | { type: 'thread_renamed'; threadId: string; title: string }
   | { type: 'state_changed'; state: Record<string, unknown>; changedKeys: string[] }
   | { type: 'agent_start' }
   | { type: 'agent_end'; reason?: 'complete' | 'aborted' | 'error' }

@@ -1,12 +1,13 @@
-import { mkdirSync, writeFileSync, existsSync } from 'node:fs';
+import { mkdirSync, writeFileSync, existsSync, cpSync, readdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { db, workspaces, modelConfigs, embeddingConfigs, migrate } from '@hatch/database';
 import { DEFAULT_SOUL, DEFAULT_IDENTITY, DEFAULT_MEMORY, DEFAULT_SKILLS, DEFAULT_MODEL_CONFIG, DEFAULT_EMBEDDING_CONFIG } from './templates.js';
-import { HATCH_HOME, DEFAULT_WORKSPACE_ID } from './services/agent-factory.js';
-import { installSkillToWorkspace } from './routes/skills.js';
+import { HATCH_HOME, DEFAULT_SKILLS_DIR, DEFAULT_WORKSPACE_ID } from './services/agent-factory.js';
+import { installSkillToWorkspace, installDefaultSkills } from './routes/skills.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const BUNDLED_SKILLS_DIR = join(__dirname, '../default-skills');
 
 /**
  * Run migrations + seed the default workspace on first run.
@@ -20,7 +21,20 @@ export async function seed(): Promise<void> {
   const migrationsFolder = join(__dirname, '..', 'node_modules', '@hatch', 'database', 'drizzle');
   migrate(db, { migrationsFolder });
 
-  // 2. Upsert default workspace in DB
+  // 2. Sync bundled default skills → HATCH_HOME/default-skills/
+  if (existsSync(BUNDLED_SKILLS_DIR)) {
+    mkdirSync(DEFAULT_SKILLS_DIR, { recursive: true });
+    for (const entry of readdirSync(BUNDLED_SKILLS_DIR, { withFileTypes: true })) {
+      if (entry.isDirectory()) {
+        const src = join(BUNDLED_SKILLS_DIR, entry.name);
+        const dest = join(DEFAULT_SKILLS_DIR, entry.name);
+        cpSync(src, dest, { recursive: true, force: true });
+      }
+    }
+    console.log('[seed] synced default skills to', DEFAULT_SKILLS_DIR);
+  }
+
+  // 3. Upsert default workspace in DB
   const [created] = await db
     .insert(workspaces)
     .values({ id: DEFAULT_WORKSPACE_ID, name: 'Default' })
@@ -31,7 +45,7 @@ export async function seed(): Promise<void> {
     console.log(`[seed] workspace created: ${created.name} (${created.id})`);
   }
 
-  // 3. Seed default configs
+  // 4. Seed default configs
   if (created) {
     await db
       .insert(modelConfigs)
@@ -74,7 +88,7 @@ export async function seed(): Promise<void> {
     console.log(`[seed] wrote ${memoryPath}`);
   }
 
-  // 7. Install default skills (only on first workspace creation)
+  // 7. Install external skills (only on first workspace creation)
   if (created) {
     for (const s of DEFAULT_SKILLS) {
       const result = await installSkillToWorkspace(DEFAULT_WORKSPACE_ID, s.skillId, s.owner, s.repo);
@@ -85,4 +99,8 @@ export async function seed(): Promise<void> {
       }
     }
   }
+
+  // 8. Sync bundled default skills (every startup — keeps them up to date)
+  await installDefaultSkills(DEFAULT_WORKSPACE_ID);
+  console.log('[seed] synced bundled default skills');
 }

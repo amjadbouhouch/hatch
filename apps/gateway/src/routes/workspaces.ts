@@ -6,7 +6,7 @@ import { zValidator } from '../middleware/zod-validator.js';
 import { z } from 'zod';
 import { HATCH_HOME } from '../services/agent-factory.js';
 import { DEFAULT_MEMORY, DEFAULT_SKILLS, DEFAULT_MODEL_CONFIG, DEFAULT_EMBEDDING_CONFIG } from '../templates.js';
-import { installSkillToWorkspace } from './skills.js';
+import { installSkillToWorkspace, installDefaultSkills } from './skills.js';
 
 const CreateWorkspaceBody = z.object({
   name: z.string().min(1).max(100),
@@ -58,9 +58,10 @@ export const workspaceRoutes = new Hono()
     writeFileSync(join(wsDir, 'memory', 'MEMORY.md'), DEFAULT_MEMORY);
 
     // Install default skills (fire-and-forget — don't block workspace creation)
-    Promise.allSettled(
-      DEFAULT_SKILLS.map((s) => installSkillToWorkspace(ws.id, s.skillId, s.owner, s.repo)),
-    ).catch(() => {});
+    Promise.allSettled([
+      ...DEFAULT_SKILLS.map((s) => installSkillToWorkspace(ws.id, s.skillId, s.owner, s.repo)),
+      installDefaultSkills(ws.id),
+    ]).catch(() => {});
 
     return c.json({ id: ws.id, name: ws.name, agentName: ws.agentName, description: ws.description }, 201);
   });

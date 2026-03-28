@@ -8,6 +8,7 @@ import type {
 } from '../client/api-types.js';
 
 export type { KnowledgeTree, FilePreview, UploadResult };
+export type UploadFile = { name: string; content: string; path: string };
 
 // ─── Fetch tree ─────────────────────────────────────────────────────────────
 

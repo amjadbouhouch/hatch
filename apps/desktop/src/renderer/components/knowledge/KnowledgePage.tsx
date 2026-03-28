@@ -213,7 +213,7 @@ function FileTree({
                 {formatSize(data.size)}
               </span>
             )}
-            {isSelected && (id.startsWith("knowledge/") || id.startsWith("projects/")) && (
+            {isSelected && id !== "SOUL.md" && id !== "IDENTITY.md" && !id.startsWith("memory/") && (
               <button
                 type="button"
                 aria-label="Delete"
@@ -581,7 +581,7 @@ export function KnowledgePage() {
         ref={fileInputRef}
         type="file"
         multiple
-        accept=".md,.txt,.pdf,.json,.csv"
+        accept=".md,.txt,.pdf,.json,.csv,.xlsx,.xls,.png,.jpg,.jpeg,.gif,.webp"
         className="hidden"
         onChange={(e) => {
           if (e.target.files) stageFiles(e.target.files);
@@ -683,7 +683,7 @@ export function KnowledgePage() {
                         Download
                       </Button>
                     )}
-                    {selectedItem && (selectedItem.startsWith("knowledge/") || selectedItem.startsWith("projects/")) && (
+                    {selectedItem && selectedItem !== "SOUL.md" && selectedItem !== "IDENTITY.md" && !selectedItem.startsWith("memory/") && (
                       <Button
                         variant="ghost"
                         size="sm"

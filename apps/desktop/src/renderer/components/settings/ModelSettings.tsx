@@ -47,6 +47,15 @@ function tryParseJson(str: string): Record<string, unknown> | null {
   }
 }
 
+// ─── Suggestions ─────────────────────────────────────────────────────────────
+
+const SUGGESTIONS = [
+  { label: "MiniMax M2.7", id: "openrouter/minimax/minimax-m2.7", note: "MiniMax" },
+  { label: "Mimo V2 Pro", id: "openrouter/xiaomi/mimo-v2-pro", note: "Xiaomi" },
+  { label: "GLM-5 Turbo", id: "openrouter/z-ai/glm-5-turbo", note: "Z-AI" },
+  { label: "Qwen3 Coder Next", id: "openrouter/qwen/qwen3-coder-next", note: "Qwen" },
+];
+
 // ─── Component ──────────────────────────────────────────────────────────────
 
 export function ModelSettings() {
@@ -209,6 +218,38 @@ export function ModelSettings() {
           )}
         </div>
       </Field>
+
+      {/* Suggestions */}
+      {!useCustom && (
+        <div>
+          <div
+            className="flex flex-wrap gap-1"
+            role="group"
+            aria-label="Suggested models"
+          >
+            {SUGGESTIONS.map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() => setModel(s.id)}
+                aria-pressed={s.id === model}
+                className={`rounded-md border px-2 py-0.5 font-mono text-[11px] transition-colors focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none ${
+                  s.id === model
+                    ? "border-primary/30 bg-primary/5 text-foreground"
+                    : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/40"
+                }`}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
+          {SUGGESTIONS.find((s) => s.id === model) && (
+            <p className="mt-1.5 text-[11px] text-muted-foreground/60">
+              {SUGGESTIONS.find((s) => s.id === model)!.note}
+            </p>
+          )}
+        </div>
+      )}
 
       {/* API Key */}
       <Field label="API Key" htmlFor={`${id}-apikey`} hint="Falls back to env var if empty.">

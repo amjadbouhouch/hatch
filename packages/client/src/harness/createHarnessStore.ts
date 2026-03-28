@@ -512,6 +512,7 @@ export function createHarnessStore(config: HarnessClientConfig) {
         case 'thread_changed':
         case 'thread_created':
         case 'thread_deleted':
+        case 'thread_renamed':
         case 'display_state_changed':
         case 'task_updated':
         // Subagent events

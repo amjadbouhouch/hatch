@@ -1,10 +1,10 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { mkdirSync, rmSync, writeFileSync, readdirSync, readFileSync, existsSync } from 'node:fs';
+import { mkdirSync, rmSync, writeFileSync, readdirSync, readFileSync, existsSync, cpSync } from 'node:fs';
 import { join } from 'node:path';
 import { zValidator } from '../middleware/zod-validator.js';
 import { db, skills, eq, and } from '@hatch/database';
-import { HATCH_HOME } from '../services/agent-factory.js';
+import { HATCH_HOME, DEFAULT_SKILLS_DIR } from '../services/agent-factory.js';
 
 const SKILLS_SH_API = 'https://skills-api-production.up.railway.app';
 
@@ -94,6 +94,50 @@ export async function installSkillToWorkspace(
     return { ok: true };
   } catch {
     return { ok: false, error: 'Install failed' };
+  }
+}
+
+/** Install all bundled default skills into a workspace (disk + DB). */
+export async function installDefaultSkills(workspaceId: string): Promise<void> {
+  if (!existsSync(DEFAULT_SKILLS_DIR)) return;
+
+  for (const entry of readdirSync(DEFAULT_SKILLS_DIR, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+
+    const skillId = entry.name;
+    const srcDir = join(DEFAULT_SKILLS_DIR, skillId);
+    const srcSkillMd = join(srcDir, 'SKILL.md');
+    if (!existsSync(srcSkillMd)) continue;
+
+    // Copy entire skill directory (SKILL.md + scripts/ etc.)
+    const destDir = join(getSkillsDir(workspaceId), skillId);
+    mkdirSync(destDir, { recursive: true });
+    cpSync(srcDir, destDir, { recursive: true, force: true });
+
+    // Parse metadata for DB record
+    const raw = readFileSync(srcSkillMd, 'utf-8');
+    const fmMatch = raw.match(/^---\n([\s\S]*?)\n---/);
+    let description = '';
+    if (fmMatch) {
+      const descMatch = fmMatch[1].match(/^description:\s*["']?(.+?)["']?$/m);
+      if (descMatch) description = descMatch[1].trim();
+    }
+
+    // Upsert DB record
+    const existing = await db
+      .select()
+      .from(skills)
+      .where(and(eq(skills.name, skillId), eq(skills.workspaceId, workspaceId)))
+      .limit(1);
+
+    if (existing.length === 0) {
+      await db.insert(skills).values({
+        name: skillId,
+        description,
+        content: 'bundled',
+        workspaceId,
+      });
+    }
   }
 }
 
