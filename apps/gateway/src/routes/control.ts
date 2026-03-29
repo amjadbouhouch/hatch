@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { zValidator } from '../middleware/zod-validator.js';
-import { AbortBody, ToolApprovalBody, AnswerBody, PlanApprovalBody } from '@hatch/shared';
+import { AbortBody, ToolApprovalBody, AnswerBody, PlanApprovalBody, SwitchModeBody } from '@hatch/shared';
 import { harnessPool } from '../services/harness-pool.js';
 import { storage } from '../services/agent-factory.js';
 
@@ -38,5 +38,10 @@ export const controlRoutes = new Hono()
   .post('/plan-approval', zValidator('json', PlanApprovalBody), async (c) => {
     const { threadId, planId, response, feedback } = c.req.valid('json');
     const ok = await harnessPool.approvePlan(threadId, planId, response, feedback);
+    return c.json({ ok });
+  })
+  .post('/switch-mode', zValidator('json', SwitchModeBody), async (c) => {
+    const { threadId, modeId } = c.req.valid('json');
+    const ok = await harnessPool.switchMode(threadId, modeId);
     return c.json({ ok });
   });

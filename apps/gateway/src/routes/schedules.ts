@@ -41,6 +41,7 @@ export const scheduleRoutes = new Hono()
         prompt: j.prompt,
         enabled: j.enabled,
         nextRunAt: j.nextRunAt,
+        lastRunAt: j.lastRunAt,
         createdAt: j.createdAt,
       };
     });

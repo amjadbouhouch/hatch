@@ -56,6 +56,13 @@ export const PlanApprovalBody = z.object({
   feedback: z.string().optional(),
 });
 
+// ─── Mode Switching ────────────────────────────────────────────────────────
+
+export const SwitchModeBody = z.object({
+  threadId: z.string().min(1, 'threadId is required'),
+  modeId: z.string().min(1, 'modeId is required'),
+});
+
 // ─── Inferred Types ─────────────────────────────────────────────────────────
 
 export type CreateThreadInput = z.infer<typeof CreateThreadBody>;
@@ -66,3 +73,4 @@ export type InitThreadInput = z.infer<typeof InitThreadBody>;
 export type ToolApprovalInput = z.infer<typeof ToolApprovalBody>;
 export type AnswerInput = z.infer<typeof AnswerBody>;
 export type PlanApprovalInput = z.infer<typeof PlanApprovalBody>;
+export type SwitchModeInput = z.infer<typeof SwitchModeBody>;

@@ -20,6 +20,7 @@ export const workspaces = sqliteTable(
     name: text("name").notNull().unique(),
     agentName: text("agent_name").notNull().default("Hatch"),
     description: text("description"),
+    projectPath: text("project_path"),
     createdAt: text("created_at")
       .notNull()
       .default(sql`(current_timestamp)`),
@@ -27,6 +28,37 @@ export const workspaces = sqliteTable(
       .notNull()
       .default(sql`(current_timestamp)`),
   },
+);
+
+// ─── Workspace Modes ────────────────────────────────────────────────────────
+
+export const workspaceModes = sqliteTable(
+  "workspace_modes",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    modeId: text("mode_id").notNull(),
+    name: text("name").notNull(),
+    isDefault: integer("is_default", { mode: "boolean" }).notNull().default(false),
+    color: text("color"),
+    model: text("model"),
+    prompt: text("prompt"),
+    sortOrder: integer("sort_order").notNull().default(0),
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    createdAt: text("created_at")
+      .notNull()
+      .default(sql`(current_timestamp)`),
+    updatedAt: text("updated_at")
+      .notNull()
+      .default(sql`(current_timestamp)`),
+  },
+  (t) => [
+    uniqueIndex("idx_modes_workspace_mode").on(t.workspaceId, t.modeId),
+    index("idx_modes_workspace").on(t.workspaceId),
+  ],
 );
 
 // ─── Skills ──────────────────────────────────────────────────────────────────
@@ -147,6 +179,56 @@ export const visionConfigs = sqliteTable(
   },
 );
 
+// ─── Telegram Configs ───────────────────────────────────────────────────────
+
+export const telegramConfigs = sqliteTable(
+  "telegram_configs",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    botToken: text("bot_token").notNull(),
+    enabled: integer("enabled", { mode: "boolean" }).notNull().default(false),
+    pollingInterval: integer("polling_interval").default(5000),
+    workspaceId: text("workspace_id")
+      .notNull()
+      .unique()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    createdAt: text("created_at")
+      .notNull()
+      .default(sql`(current_timestamp)`),
+    updatedAt: text("updated_at")
+      .notNull()
+      .default(sql`(current_timestamp)`),
+  },
+);
+
+// ─── Discord Configs ─────────────────────────────────────────────────────────
+
+export const discordConfigs = sqliteTable(
+  "discord_configs",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    botToken: text("bot_token").notNull(),
+    applicationId: text("application_id").notNull(),
+    publicKey: text("public_key"),
+    enabled: integer("enabled", { mode: "boolean" }).notNull().default(false),
+    pollingInterval: integer("polling_interval").default(5000),
+    workspaceId: text("workspace_id")
+      .notNull()
+      .unique()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    createdAt: text("created_at")
+      .notNull()
+      .default(sql`(current_timestamp)`),
+    updatedAt: text("updated_at")
+      .notNull()
+      .default(sql`(current_timestamp)`),
+  },
+);
+
 // ─── Embedding Configs ──────────────────────────────────────────────────────
 
 export const embeddingConfigs = sqliteTable(
@@ -186,6 +268,7 @@ export const scheduledJobs = sqliteTable(
     prompt: text("prompt").notNull(),
     enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
     nextRunAt: text("next_run_at"),
+    lastRunAt: text("last_run_at"),
     mastraThreadId: text("mastra_thread_id"),
     workspaceId: text("workspace_id")
       .notNull()
@@ -207,12 +290,22 @@ export const scheduledJobs = sqliteTable(
 // ─── Relations ───────────────────────────────────────────────────────────────
 
 export const workspacesRelations = relations(workspaces, ({ one, many }) => ({
+  modes: many(workspaceModes),
   skills: many(skills),
   knowledgeBases: many(knowledgeBases),
   modelConfig: one(modelConfigs),
   visionConfig: one(visionConfigs),
   embeddingConfig: one(embeddingConfigs),
   scheduledJobs: many(scheduledJobs),
+  telegramConfig: one(telegramConfigs),
+  discordConfig: one(discordConfigs),
+}));
+
+export const workspaceModesRelations = relations(workspaceModes, ({ one }) => ({
+  workspace: one(workspaces, {
+    fields: [workspaceModes.workspaceId],
+    references: [workspaces.id],
+  }),
 }));
 
 export const skillsRelations = relations(skills, ({ one }) => ({
@@ -270,6 +363,26 @@ export const embeddingConfigsRelations = relations(
   }),
 );
 
+export const telegramConfigsRelations = relations(
+  telegramConfigs,
+  ({ one }) => ({
+    workspace: one(workspaces, {
+      fields: [telegramConfigs.workspaceId],
+      references: [workspaces.id],
+    }),
+  }),
+);
+
+export const discordConfigsRelations = relations(
+  discordConfigs,
+  ({ one }) => ({
+    workspace: one(workspaces, {
+      fields: [discordConfigs.workspaceId],
+      references: [workspaces.id],
+    }),
+  }),
+);
+
 export const scheduledJobsRelations = relations(
   scheduledJobs,
   ({ one }) => ({
@@ -284,6 +397,9 @@ export const scheduledJobsRelations = relations(
 
 export type Workspace = InferSelectModel<typeof workspaces>;
 export type NewWorkspace = InferInsertModel<typeof workspaces>;
+
+export type WorkspaceMode = InferSelectModel<typeof workspaceModes>;
+export type NewWorkspaceMode = InferInsertModel<typeof workspaceModes>;
 
 export type Skill = InferSelectModel<typeof skills>;
 export type NewSkill = InferInsertModel<typeof skills>;
@@ -302,4 +418,10 @@ export type NewEmbeddingConfig = InferInsertModel<typeof embeddingConfigs>;
 
 export type ScheduledJob = InferSelectModel<typeof scheduledJobs>;
 export type NewScheduledJob = InferInsertModel<typeof scheduledJobs>;
+
+export type TelegramConfig = InferSelectModel<typeof telegramConfigs>;
+export type NewTelegramConfig = InferInsertModel<typeof telegramConfigs>;
+
+export type DiscordConfig = InferSelectModel<typeof discordConfigs>;
+export type NewDiscordConfig = InferInsertModel<typeof discordConfigs>;
 

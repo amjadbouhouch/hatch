@@ -28,15 +28,15 @@ import {
 import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useUIStore, useActiveTab } from "../../stores/ui-store.js";
-import { useWorkspaces, useCreateWorkspace } from "../../hooks/use-workspaces.js";
+import { useWorkspaces, useCreateWorkspace, useWorkspaceTemplates } from "../../hooks/use-workspaces.js";
+import type { WorkspaceTemplate } from "../../client/api-types.js";
 
-type Template = "blank" | "coder" | "marketing";
-
-const TEMPLATES: { value: Template; label: string; icon: typeof FileIcon; defaultName: string }[] = [
-  { value: "blank", label: "Blank workspace", icon: FileIcon, defaultName: "New Workspace" },
-  { value: "coder", label: "Coder", icon: CodeIcon, defaultName: "My Coder Workspace" },
-  { value: "marketing", label: "Marketing", icon: MegaphoneIcon, defaultName: "My Marketing Workspace" },
-];
+const ICON_MAP: Record<string, typeof FileIcon> = {
+  file: FileIcon,
+  code: CodeIcon,
+  megaphone: MegaphoneIcon,
+  folder: FolderIcon,
+};
 
 // ─── Animation variants ─────────────────────────────────────────────────────
 
@@ -126,12 +126,13 @@ export function ChatHeader() {
   const navigate = useNavigate();
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [step, setStep] = useState<PaletteStep>("search");
-  const [selectedTemplate, setSelectedTemplate] = useState<Template>("blank");
+  const [selectedTemplate, setSelectedTemplate] = useState<string>("blank");
   const [newName, setNewName] = useState("");
   const [createError, setCreateError] = useState<string | null>(null);
   const directionRef = useRef(1);
 
   const { data: workspaces, isLoading: isLoadingWorkspaces } = useWorkspaces();
+  const { data: templates } = useWorkspaceTemplates();
   const createWorkspace = useCreateWorkspace();
 
   const tabs = useUIStore((s) => s.tabs);
@@ -214,9 +215,9 @@ export function ChatHeader() {
     openInNewTab(wsId);
   };
 
-  const handlePickTemplate = (template: Template, defaultName: string) => {
-    setSelectedTemplate(template);
-    setNewName(defaultName);
+  const handlePickTemplate = (tpl: WorkspaceTemplate) => {
+    setSelectedTemplate(tpl.id);
+    setNewName(tpl.id === 'blank' ? 'New Workspace' : `My ${tpl.name} Workspace`);
     goTo("confirm-name");
   };
 
@@ -229,7 +230,7 @@ export function ChatHeader() {
     }
     setCreateError(null);
     createWorkspace.mutate(
-      { name, template: selectedTemplate },
+      { name, template: selectedTemplate as "blank" | "coder" | "marketing" },
       {
         onSuccess: (data) => {
           setPaletteOpen(false);
@@ -396,15 +397,26 @@ export function ChatHeader() {
                   <CommandInput className="sr-only" aria-hidden tabIndex={-1} />
                   <CommandList>
                     <CommandGroup heading="Templates">
-                      {TEMPLATES.map((t) => (
-                        <CommandItem
-                          key={t.value}
-                          onSelect={() => handlePickTemplate(t.value, t.defaultName)}
-                        >
-                          <t.icon className="size-4 text-muted-foreground" />
-                          <span>{t.label}</span>
-                        </CommandItem>
-                      ))}
+                      {(templates ?? []).map((t) => {
+                        const Icon = ICON_MAP[t.icon] ?? FileIcon;
+                        return (
+                          <CommandItem
+                            key={t.id}
+                            onSelect={() => handlePickTemplate(t)}
+                          >
+                            <Icon className="size-4 text-muted-foreground" />
+                            <div className="flex-1">
+                              <span>{t.name}</span>
+                              <p className="text-[11px] text-muted-foreground/60">{t.description}</p>
+                            </div>
+                            <div className="flex gap-1">
+                              {t.modes.map((m) => (
+                                <span key={m.modeId} className="size-2 rounded-full" style={{ backgroundColor: m.color }} />
+                              ))}
+                            </div>
+                          </CommandItem>
+                        );
+                      })}
                     </CommandGroup>
                   </CommandList>
                 </motion.div>
@@ -461,12 +473,12 @@ export function ChatHeader() {
                       )}
                       <div className="flex items-center gap-2 text-xs text-muted-foreground">
                         {(() => {
-                          const tpl = TEMPLATES.find((t) => t.value === selectedTemplate);
-                          const Icon = tpl?.icon ?? FileIcon;
+                          const tpl = templates?.find((t) => t.id === selectedTemplate);
+                          const Icon = ICON_MAP[tpl?.icon ?? 'file'] ?? FileIcon;
                           return (
                             <>
                               <Icon className="size-3.5" />
-                              <span>Using: {tpl?.label} template</span>
+                              <span>Using: {tpl?.name ?? selectedTemplate} template</span>
                             </>
                           );
                         })()}

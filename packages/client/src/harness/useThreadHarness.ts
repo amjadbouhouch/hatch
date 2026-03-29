@@ -31,11 +31,13 @@ export interface UseThreadHarnessReturn {
   followUpCount: number;
   pendingFollowUps: HarnessMessage[];
   harnessState: HarnessState;
+  currentModeId: string | null;
   sendMessage: (content: string) => void;
   abort: () => void;
   approveTool: (decision: 'allow' | 'deny') => void;
   answerQuestion: (questionId: string, answer: string) => void;
   approvePlan: (planId: string, response: 'approved' | 'rejected', feedback?: string) => void;
+  switchMode: (modeId: string) => void;
 }
 
 const EMPTY_TOOL_STATES = new Map<string, ToolState>();
@@ -120,6 +122,10 @@ export function createUseThreadHarness(store: StoreApi<HarnessStore>) {
       store,
       (s) => s.threads.get(threadId)?.harnessState ?? DEFAULT_HARNESS_STATE
     );
+    const currentModeId = useStore(
+      store,
+      (s) => s.threads.get(threadId)?.currentModeId ?? null
+    );
     const isConnected = useStore(store, (s) => s.isConnected);
 
     // Bound actions
@@ -128,6 +134,7 @@ export function createUseThreadHarness(store: StoreApi<HarnessStore>) {
     const storeApproveTool = useStore(store, (s) => s.approveTool);
     const storeAnswerQuestion = useStore(store, (s) => s.answerQuestion);
     const storeApprovePlan = useStore(store, (s) => s.approvePlan);
+    const storeSwitchMode = useStore(store, (s) => s.switchMode);
 
     const sendMessage = useCallback(
       (content: string) => storeSend(threadId, content),
@@ -147,6 +154,10 @@ export function createUseThreadHarness(store: StoreApi<HarnessStore>) {
         storeApprovePlan(threadId, planId, response, feedback),
       [storeApprovePlan, threadId]
     );
+    const switchMode = useCallback(
+      (modeId: string) => storeSwitchMode(threadId, modeId),
+      [storeSwitchMode, threadId]
+    );
 
     return {
       messages,
@@ -161,11 +172,13 @@ export function createUseThreadHarness(store: StoreApi<HarnessStore>) {
       followUpCount,
       pendingFollowUps,
       harnessState,
+      currentModeId,
       sendMessage,
       abort,
       approveTool,
       answerQuestion,
       approvePlan,
+      switchMode,
     };
   };
 }

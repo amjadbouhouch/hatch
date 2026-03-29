@@ -1,11 +1,13 @@
 import { Harness } from '@hatch/harness';
 import type { HarnessEvent } from '@hatch/harness';
+import { db, workspaceModes, eq, asc } from '@hatch/database';
 import {
   createAgent,
   createWorkspace,
   DEFAULT_WORKSPACE_ID,
   storage,
 } from './agent-factory.js';
+import { createModeTools } from '../tools/mode-tools.js';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -35,24 +37,47 @@ export class HarnessPoolManager {
 
   // ── Private Helpers ─────────────────────────────────────────────────────
 
-  private async _buildHarness(workspaceId: string): Promise<Harness> {
+  private async _buildHarness(
+    workspaceId: string,
+    opts?: { initialState?: Record<string, unknown> },
+  ): Promise<Harness> {
     const { agent, modelSettings } = await createAgent(workspaceId);
+
+    // Load modes from DB
+    const dbModes = await db
+      .select()
+      .from(workspaceModes)
+      .where(eq(workspaceModes.workspaceId, workspaceId))
+      .orderBy(asc(workspaceModes.sortOrder));
+
+    const modes = dbModes.length > 0
+      ? dbModes.map((m) => ({
+          id: m.modeId,
+          name: m.name,
+          default: m.isDefault,
+          color: m.color ?? undefined,
+          defaultModelId: m.model ?? undefined,
+          agent,
+        }))
+      : [{ id: 'chat', name: 'Chat', default: true as const, agent }];
+
+    // Build switch_mode tool only when workspace has multiple modes
+    const harnessRef: { current: Harness | null } = { current: null };
+    const modeTools = modes.length > 1
+      ? createModeTools(harnessRef, modes.map((m) => ({ id: m.id, name: m.name ?? m.id })))
+      : undefined;
 
     const harness = new Harness({
       id: crypto.randomUUID(),
       resourceId: workspaceId,
       storage,
-      modes: [
-        {
-          id: 'chat',
-          name: 'Chat',
-          default: true,
-          agent,
-        },
-      ],
-      initialState: { yolo: true },
+      modes,
+      tools: modeTools,
+      initialState: { yolo: true, ...opts?.initialState },
       modelSettings,
     });
+
+    harnessRef.current = harness;
 
     return harness;
   }
@@ -70,7 +95,11 @@ export class HarnessPoolManager {
     this.pool.set(entry.threadId, entry);
   }
 
-  private async _storeThreadMetadata(threadId: string, workspaceId: string): Promise<void> {
+  private async _storeThreadMetadata(
+    threadId: string,
+    workspaceId: string,
+    extra?: Record<string, string | undefined>,
+  ): Promise<void> {
     try {
       const memory = await storage.getStore('memory');
       if (!memory) return;
@@ -79,7 +108,7 @@ export class HarnessPoolManager {
         await memory.updateThread({
           id: threadId,
           title: thread.title ?? '',
-          metadata: { ...thread.metadata, workspaceId },
+          metadata: { ...thread.metadata, workspaceId, ...extra },
         });
       }
     } catch (err) {
@@ -211,6 +240,33 @@ export class HarnessPoolManager {
     return { threadId, entry };
   }
 
+  async createScheduleThread(
+    workspaceId: string,
+    title: string,
+    meta?: { scheduleId?: string; scheduleName?: string },
+  ): Promise<{ threadId: string; entry: PoolEntry }> {
+    const harness = await this._buildHarness(workspaceId, {
+      initialState: { platform: 'schedule' },
+    });
+    await harness.init();
+    const thread = await harness.createThread({ title });
+    const threadId = thread.id;
+
+    await this._storeThreadMetadata(threadId, workspaceId, meta);
+
+    const entry: PoolEntry = {
+      harness,
+      threadId,
+      workspaceId,
+      title,
+      lastActivityAt: Date.now(),
+      unsub: () => { },
+    };
+
+    this._registerEntry(entry);
+    return { threadId, entry };
+  }
+
   async remove(threadId: string): Promise<void> {
     const entry = this.pool.get(threadId);
     if (!entry) return;
@@ -280,6 +336,13 @@ export class HarnessPoolManager {
     const entry = this.pool.get(threadId);
     if (!entry) return false;
     await entry.harness.respondToPlanApproval({ planId, response: { action: response, feedback } });
+    return true;
+  }
+
+  async switchMode(threadId: string, modeId: string): Promise<boolean> {
+    const entry = this.pool.get(threadId);
+    if (!entry) return false;
+    await entry.harness.switchMode({ modeId });
     return true;
   }
 

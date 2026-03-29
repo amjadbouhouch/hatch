@@ -1,8 +1,8 @@
 import { mkdirSync, writeFileSync, existsSync, cpSync, readdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { db, workspaces, modelConfigs, embeddingConfigs, migrate } from '@hatch/database';
-import { DEFAULT_SOUL, DEFAULT_IDENTITY, DEFAULT_MEMORY, DEFAULT_SKILLS, DEFAULT_MODEL_CONFIG, DEFAULT_EMBEDDING_CONFIG } from './templates.js';
+import { db, workspaces, workspaceModes, modelConfigs, embeddingConfigs, eq, migrate } from '@hatch/database';
+import { DEFAULT_MEMORY, DEFAULT_SKILLS, DEFAULT_MODEL_CONFIG, DEFAULT_EMBEDDING_CONFIG, getTemplate } from './templates.js';
 import { HATCH_HOME, DEFAULT_SKILLS_DIR, DEFAULT_WORKSPACE_ID } from './services/agent-factory.js';
 import { installSkillToWorkspace, installDefaultSkills } from './routes/skills.js';
 
@@ -59,6 +59,7 @@ export async function seed(): Promise<void> {
   }
 
   // 5. Write SOUL.md + IDENTITY.md if they don't exist yet
+  const defaultTpl = getTemplate('blank');
   const wsDir = join(HATCH_HOME, 'workspaces', DEFAULT_WORKSPACE_ID);
   mkdirSync(wsDir, { recursive: true });
 
@@ -66,12 +67,12 @@ export async function seed(): Promise<void> {
   const identityPath = join(wsDir, 'IDENTITY.md');
 
   if (!existsSync(soulPath)) {
-    writeFileSync(soulPath, DEFAULT_SOUL);
+    writeFileSync(soulPath, defaultTpl.soul);
     console.log(`[seed] wrote ${soulPath}`);
   }
 
   if (!existsSync(identityPath)) {
-    writeFileSync(identityPath, DEFAULT_IDENTITY);
+    writeFileSync(identityPath, defaultTpl.identity);
     console.log(`[seed] wrote ${identityPath}`);
   }
 
@@ -103,4 +104,23 @@ export async function seed(): Promise<void> {
   // 8. Sync bundled default skills (every startup — keeps them up to date)
   await installDefaultSkills(DEFAULT_WORKSPACE_ID);
   console.log('[seed] synced bundled default skills');
+
+  // 9. Seed default workspace modes (if none exist)
+  const existingModes = await db.select().from(workspaceModes).where(
+    eq(workspaceModes.workspaceId, DEFAULT_WORKSPACE_ID),
+  );
+  if (existingModes.length === 0) {
+    for (const mode of defaultTpl.modes) {
+      await db.insert(workspaceModes).values({
+        workspaceId: DEFAULT_WORKSPACE_ID,
+        modeId: mode.modeId,
+        name: mode.name,
+        isDefault: mode.isDefault,
+        color: mode.color,
+        prompt: mode.prompt,
+        sortOrder: mode.sortOrder,
+      });
+    }
+    console.log('[seed] seeded default workspace modes');
+  }
 }

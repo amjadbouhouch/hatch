@@ -112,6 +112,7 @@ export const listSchedulesTool = createTool({
         rruleStr: scheduledJobs.rruleStr,
         enabled: scheduledJobs.enabled,
         nextRunAt: scheduledJobs.nextRunAt,
+        lastRunAt: scheduledJobs.lastRunAt,
       })
       .from(scheduledJobs)
       .where(

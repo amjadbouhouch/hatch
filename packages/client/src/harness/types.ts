@@ -73,6 +73,7 @@ export interface ThreadState {
   followUpCount: number;
   pendingFollowUps: HarnessMessage[];
   harnessState: HarnessState;
+  currentModeId: string | null;
 }
 
 export interface ThreadPreview {
@@ -101,6 +102,7 @@ export interface HarnessStore {
   approveTool: (threadId: string, decision: 'allow' | 'deny') => void;
   answerQuestion: (threadId: string, questionId: string, answer: string) => void;
   approvePlan: (threadId: string, planId: string, response: 'approved' | 'rejected', feedback?: string) => void;
+  switchMode: (threadId: string, modeId: string) => Promise<void>;
 }
 
 // ─── Configuration ───────────────────────────────────────────────────────────

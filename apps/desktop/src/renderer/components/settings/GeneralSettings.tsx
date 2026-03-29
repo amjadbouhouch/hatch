@@ -13,7 +13,7 @@ import {
   DialogTrigger,
   DialogClose,
 } from "@/components/ui/dialog";
-import { LoaderIcon } from "lucide-react";
+import { LoaderIcon, FolderOpenIcon } from "lucide-react";
 import { useWorkspace, useUpdateWorkspace, useDeleteWorkspace } from "../../hooks/use-configs.js";
 
 // ─── Component ──────────────────────────────────────────────────────────────
@@ -27,6 +27,7 @@ export function GeneralSettings() {
 
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [projectPath, setProjectPath] = useState("");
   const [loaded, setLoaded] = useState(false);
 
   const id = useId();
@@ -35,19 +36,31 @@ export function GeneralSettings() {
     if (!workspace) return;
     setName(workspace.name ?? "");
     setDescription(workspace.description ?? "");
+    setProjectPath((workspace as any).projectPath ?? "");
     setLoaded(true);
   }, [workspace]);
 
   const isDirty =
     loaded && (
       name !== (workspace?.name ?? "") ||
-      description !== (workspace?.description ?? "")
+      description !== (workspace?.description ?? "") ||
+      projectPath !== ((workspace as any)?.projectPath ?? "")
     );
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!workspaceId) return;
-    update({ workspaceId, name: name || undefined, description: description || null });
+    update({
+      workspaceId,
+      name: name || undefined,
+      description: description || null,
+      projectPath: projectPath || null,
+    } as any);
+  }
+
+  async function handleBrowseFolder() {
+    const result = await (window as any).hatchAPI?.selectFolder?.();
+    if (result) setProjectPath(result);
   }
 
   function handleDelete() {
@@ -72,6 +85,21 @@ export function GeneralSettings() {
 
         <Field label="Description" htmlFor={`${id}-desc`}>
           <Textarea id={`${id}-desc`} value={description} onChange={(e) => setDescription(e.target.value)} rows={3} className="resize-none" />
+        </Field>
+
+        <Field label="Project Path" htmlFor={`${id}-project`} hint="Link a local project directory. The agent gets direct file access + command execution + LSP. Leave empty for Docker sandbox mode.">
+          <div className="flex gap-2">
+            <Input
+              id={`${id}-project`}
+              value={projectPath}
+              onChange={(e) => setProjectPath(e.target.value)}
+              placeholder="/Users/you/projects/my-app"
+              className="flex-1"
+            />
+            <Button type="button" variant="outline" size="icon" className="shrink-0" onClick={handleBrowseFolder}>
+              <FolderOpenIcon className="size-4" />
+            </Button>
+          </div>
         </Field>
 
         <div className="flex justify-end pt-1">

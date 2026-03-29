@@ -10,6 +10,7 @@ export {
   ToolApprovalBody,
   AnswerBody,
   PlanApprovalBody,
+  SwitchModeBody,
 } from "./schemas.js";
 
 export type {
@@ -21,6 +22,7 @@ export type {
   ToolApprovalInput,
   AnswerInput,
   PlanApprovalInput,
+  SwitchModeInput,
 } from "./schemas.js";
 
 export type {

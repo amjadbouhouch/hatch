@@ -1,15 +1,15 @@
-import { db, embeddingConfigs, eq, modelConfigs } from '@hatch/database';
+import { db, embeddingConfigs, eq, modelConfigs, workspaceModes, workspaces } from '@hatch/database';
 import { buildInstructions, loadAgentFiles } from '@hatch/harness';
 import type { HarnessModelSettings } from '@hatch/harness';
 import { Mastra } from '@mastra/core';
 import { Agent } from '@mastra/core/agent';
 import { ModelRouterEmbeddingModel } from '@mastra/core/llm';
-import { LocalFilesystem, Workspace, WORKSPACE_TOOLS } from '@mastra/core/workspace';
+import { LocalFilesystem, LocalSandbox, Workspace, WORKSPACE_TOOLS } from '@mastra/core/workspace';
 import { DockerSandbox } from './docker-sandbox.js';
 import { LibSQLStore, LibSQLVector } from '@mastra/libsql';
 import { Memory } from '@mastra/memory';
 import { embed } from 'ai';
-import { mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { scheduleTools } from '../tools/schedule-tools.js';
@@ -54,6 +54,11 @@ async function loadEmbeddingConfig(workspaceId: string) {
 
 // ─── Workspace ──────────────────────────────────────────────────────────────
 
+async function loadProjectPath(workspaceId: string): Promise<string | null> {
+  const [row] = await db.select({ projectPath: workspaces.projectPath }).from(workspaces).where(eq(workspaces.id, workspaceId));
+  return row?.projectPath ?? null;
+}
+
 export async function createWorkspace(workspaceId: string) {
   const basePath = join(HATCH_HOME, 'workspaces', workspaceId);
   const skillsDir = join(basePath, 'skills');
@@ -66,8 +71,6 @@ export async function createWorkspace(workspaceId: string) {
   mkdirSync(knowledgeDir, { recursive: true });
   mkdirSync(projects, { recursive: true });
   mkdirSync(join(memoryDir, 'daily'), { recursive: true });
-
-  const skillPaths = ['/workspace/skills'];
 
   // Load embedding config from DB
   const embeddingConfig = await loadEmbeddingConfig(workspaceId);
@@ -101,48 +104,83 @@ export async function createWorkspace(workspaceId: string) {
 
   const id = `ws-${workspaceId}`;
 
-  const ws = new Workspace({
-    id,
-    searchIndexName,
-    name: `Workspace ${workspaceId}`,
-    mounts: {
-      '/workspace': new LocalFilesystem({
-        basePath,
+  // Check if this workspace has a linked project (coding mode)
+  const projectPath = await loadProjectPath(workspaceId);
+  const isProjectMode = projectPath && existsSync(projectPath);
+
+  let ws;
+
+  if (isProjectMode) {
+    // ── Project mode: LocalFilesystem + LocalSandbox + LSP ──
+    // Agent works directly on the host project — no Docker
+    ws = new Workspace({
+      id,
+      searchIndexName,
+      name: `Workspace ${workspaceId}`,
+      filesystem: new LocalFilesystem({
+        basePath: projectPath,
         contained: true,
-        onInit({ filesystem }) {
-          console.log(`onInit called for ${id}`);
+        allowedPaths: [basePath],
+      }),
+      sandbox: new LocalSandbox({
+        workingDirectory: projectPath,
+      }),
+      lsp: true,
+      bm25: true,
+      vectorStore,
+      skills() {
+        return [join(basePath, 'skills')];
+      },
+      embedder,
+      tools: {
+        [WORKSPACE_TOOLS.FILESYSTEM.WRITE_FILE]: { requireReadBeforeWrite: true },
+        [WORKSPACE_TOOLS.SEARCH.INDEX]: { enabled: false },
+      },
+    });
+  } else {
+    // ── Sandbox mode: Mounts + Docker ──
+    // General workspace with isolated Docker sandbox
+    ws = new Workspace({
+      id,
+      searchIndexName,
+      name: `Workspace ${workspaceId}`,
+      mounts: {
+        '/workspace': new LocalFilesystem({
+          basePath,
+          contained: true,
+        }),
+      },
+      sandbox: new DockerSandbox({
+        id: workspaceId,
+        containerName: `hatch-sandbox-${workspaceId}`,
+        image: 'hatch-sandbox',
+        resourceLimits: {
+          memory: process.env.SANDBOX_MEMORY ?? '512m',
+          cpus: process.env.SANDBOX_CPUS ?? '1',
+          pidsLimit: Number(process.env.SANDBOX_PIDS_LIMIT) || 256,
+          tmpfsSize: process.env.SANDBOX_TMPFS_SIZE ?? '100m',
+        },
+        networkOptions: {
+          network: process.env.SANDBOX_NETWORK ?? 'bridge',
+        },
+        readOnly: process.env.SANDBOX_READ_ONLY !== 'false',
+        instructions(opts) {
+          return opts.defaultInstructions + `\n All your work must be inside projects folder.`;
         },
       }),
-    },
-    sandbox: new DockerSandbox({
-      id: workspaceId,
-      containerName: `hatch-sandbox-${workspaceId}`,
-      image: 'hatch-sandbox',
-      resourceLimits: {
-        memory: process.env.SANDBOX_MEMORY ?? '512m',
-        cpus: process.env.SANDBOX_CPUS ?? '1',
-        pidsLimit: Number(process.env.SANDBOX_PIDS_LIMIT) || 256,
-        tmpfsSize: process.env.SANDBOX_TMPFS_SIZE ?? '100m',
+      bm25: true,
+      vectorStore,
+      skills() {
+        return ['/workspace/skills'];
       },
-      networkOptions: {
-        network: process.env.SANDBOX_NETWORK ?? 'bridge',
+      embedder,
+      tools: {
+        [WORKSPACE_TOOLS.FILESYSTEM.WRITE_FILE]: { requireReadBeforeWrite: true },
+        [WORKSPACE_TOOLS.SEARCH.INDEX]: { enabled: false },
       },
-      readOnly: process.env.SANDBOX_READ_ONLY !== 'false',
-      instructions(opts) {
-        return opts.defaultInstructions + `\n All your work must be inside projects folder.`;
-      },
-    }),
-    bm25: true,
-    vectorStore,
-    skills(context) {
-      return skillPaths;
-    },
-    embedder,
-    tools: {
-      [WORKSPACE_TOOLS.FILESYSTEM.WRITE_FILE]: { requireReadBeforeWrite: true },
-      [WORKSPACE_TOOLS.SEARCH.INDEX]: { enabled: false },
-    },
-  });
+    });
+  }
+
   await ws.init();
   return ws;
 }
@@ -164,7 +202,12 @@ export interface CreateAgentResult {
 export async function createAgent(workspaceId: string): Promise<CreateAgentResult> {
   const { soul, identity } = loadAgentFiles(HATCH_HOME, workspaceId);
 
-  const instructions = buildInstructions(soul, identity);
+  const projectPath = await loadProjectPath(workspaceId);
+  const baseInstructions = buildInstructions(soul, identity, { projectPath });
+
+  // Pre-load mode prompts from DB for dynamic instructions
+  const dbModes = await db.select().from(workspaceModes).where(eq(workspaceModes.workspaceId, workspaceId));
+  const modePrompts = new Map(dbModes.filter((m) => m.prompt).map((m) => [m.modeId, m.prompt!]));
 
   const config = await loadModelConfig(workspaceId);
   if (!config?.model) {
@@ -186,7 +229,11 @@ export async function createAgent(workspaceId: string): Promise<CreateAgentResul
     mastra,
     id: `hatch-${workspaceId}`,
     name: 'Hatch',
-    instructions,
+    instructions: ({ requestContext }) => {
+      const modeId = (requestContext as any)?.get?.('harness')?.modeId;
+      const modePrompt = modeId ? modePrompts.get(modeId) : undefined;
+      return modePrompt ? `${baseInstructions}\n\n---\n\n${modePrompt}` : baseInstructions;
+    },
     model: {
       id: config.model as `${string}/${string}`,
       apiKey: config.apiKey ?? undefined,

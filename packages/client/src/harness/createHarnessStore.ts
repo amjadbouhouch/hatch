@@ -33,6 +33,7 @@ function createEmptyThread(loading: boolean): ThreadState {
     followUpCount: 0,
     pendingFollowUps: [],
     harnessState: DEFAULT_HARNESS_STATE,
+    currentModeId: null,
   };
 }
 
@@ -497,9 +498,14 @@ export function createHarnessStore(config: HarnessClientConfig) {
           }));
           break;
 
+        case 'mode_changed':
+          updateThread(set, get, threadId, () => ({
+            currentModeId: data.modeId,
+          }));
+          break;
+
         // Informational events — no state change needed
         case 'usage_update':
-        case 'mode_changed':
         case 'model_changed':
         case 'info':
         case 'error':
@@ -631,6 +637,14 @@ export function createHarnessStore(config: HarnessClientConfig) {
         }));
       } catch (error) {
         console.error('[harnessStore] approvePlan error:', error);
+      }
+    },
+
+    switchMode: async (threadId: string, modeId: string) => {
+      try {
+        await apiPost('switch-mode', { threadId, modeId });
+      } catch (error) {
+        console.error('[harnessStore] switchMode error:', error);
       }
     },
   }));

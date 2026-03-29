@@ -44,6 +44,7 @@ import { cn } from "@/lib/utils";
 import { BotIcon, ShieldAlertIcon, HelpCircleIcon, ClipboardListIcon, CheckCircle2Icon, LoaderIcon, AlertCircleIcon, CopyIcon, CheckIcon, ClockIcon, WrenchIcon, RotateCwIcon, PaperclipIcon, DownloadIcon, FileIcon, type LucideProps } from "lucide-react";
 import { useUploadKnowledge } from "../../hooks/use-knowledge.js";
 import type { UploadFile } from "../../hooks/use-knowledge.js";
+import { useWorkspaceModes } from "../../hooks/use-workspaces.js";
 import { getClient } from "../../client/api.js";
 import { toast } from "sonner";
 import { forwardRef, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -512,6 +513,46 @@ function AttachmentCountReporter({ onChange }: { onChange: (count: number) => vo
   return null;
 }
 
+// ─── Mode Switcher ───────────────────────────────────────────────────────────
+
+interface ModeSwitcherProps {
+  modes: Array<{ modeId: string; name: string; color: string | null }>;
+  currentModeId: string | null;
+  onSwitch: (modeId: string) => void;
+}
+
+function ModeSwitcher({ modes, currentModeId, onSwitch }: ModeSwitcherProps) {
+  // Fall back to the default mode if no mode_changed event received yet
+  const activeId = currentModeId ?? modes.find((m) => (m as any).isDefault)?.modeId ?? modes[0]?.modeId;
+
+  return (
+    <div className="flex items-center gap-0.5 rounded-md border border-border/50 bg-muted/30 p-0.5">
+      {modes.map((mode) => {
+        const isActive = mode.modeId === activeId;
+        return (
+          <button
+            key={mode.modeId}
+            type="button"
+            onClick={() => !isActive && onSwitch(mode.modeId)}
+            className={cn(
+              "flex items-center gap-1.5 rounded-sm px-2.5 py-1 text-xs font-medium transition-all",
+              isActive
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            <span
+              className="size-2 shrink-0 rounded-full"
+              style={{ backgroundColor: mode.color ?? "#6b7280" }}
+            />
+            {mode.name}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 // ─── Main Component ──────────────────────────────────────────────────────────
 
 const DEFAULT_WORKSPACE_ID = "00000000-0000-0000-0000-000000000001";
@@ -543,7 +584,11 @@ export function ChatView() {
     approvePlan,
     pendingFollowUps,
     harnessState,
+    currentModeId,
+    switchMode,
   } = harness;
+
+  const { data: workspaceModes } = useWorkspaceModes(workspaceId);
 
   const uploadKnowledge = useUploadKnowledge();
 
@@ -718,10 +763,18 @@ export function ChatView() {
               <PromptInputFooter>
                 <PromptInputTools>
                   <AttachButton />
-                  <PromptInputButton variant="ghost">
-                    <BotIcon className="size-4" />
-                    <span>Hatch Agent</span>
-                  </PromptInputButton>
+                  {workspaceModes && workspaceModes.length > 1 ? (
+                    <ModeSwitcher
+                      modes={workspaceModes}
+                      currentModeId={currentModeId}
+                      onSwitch={switchMode}
+                    />
+                  ) : (
+                    <PromptInputButton variant="ghost">
+                      <BotIcon className="size-4" />
+                      <span>Hatch Agent</span>
+                    </PromptInputButton>
+                  )}
                 </PromptInputTools>
                 <PromptInputSubmit
                   disabled={isSubmitDisabled}

@@ -4,6 +4,7 @@ import { app, auth } from './app.js';
 import { printAuthInfo } from './auth/resolve.js';
 import { harnessPool } from './services/harness-pool.js';
 import { startIndexCron } from './services/knowledge-indexer.js';
+import { startScheduleWorker } from './services/schedule-worker.js';
 import { seed } from './seed.js';
 
 const PORT = Number(process.env.PORT) || 3000;
@@ -12,6 +13,7 @@ async function start() {
   await seed();
   harnessPool.startSweeper();
   startIndexCron();
+  startScheduleWorker();
 
   serve({ fetch: app.fetch, port: PORT }, () => {
     console.log(`@hatch/gateway v${HATCH_VERSION} — http://localhost:${PORT}`);

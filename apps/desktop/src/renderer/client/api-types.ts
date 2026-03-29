@@ -27,10 +27,21 @@ export type HealthResponse = ApiResponse<Client['health']['$get']>;
 
 // ─── Workspaces ─────────────────────────────────────────────────────────────
 
+export type WorkspaceTemplateList = ApiResponse<Client['workspaces']['templates']['$get']>;
+export type WorkspaceTemplate = WorkspaceTemplateList[number];
 export type WorkspaceList = ApiResponse<Client['workspaces']['$get']>;
 export type Workspace = WorkspaceList[number];
 export type CreateWorkspaceInput = ApiInput<Client['workspaces']['$post']>['json'];
 export type CreateWorkspaceResponse = ApiResponse<Client['workspaces']['$post'], 201>;
+
+export type WorkspaceMode = {
+  modeId: string;
+  name: string;
+  isDefault: boolean;
+  color: string | null;
+  sortOrder: number;
+};
+export type WorkspaceModeList = WorkspaceMode[];
 
 // ─── Threads ────────────────────────────────────────────────────────────────
 
