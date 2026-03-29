@@ -111,46 +111,66 @@ Built-in file manager for per-workspace knowledge — upload documents, organize
 
 ## Architecture
 
-Hatch is a **monorepo with 7 packages** — clean separation between desktop, gateway, harness, client, database, shared types, and config.
+Hatch is a **monorepo with 8 packages** — clean separation between desktop, gateway, sandbox service, harness, client, database, shared types, and config.
 
+```mermaid
+graph TB
+    subgraph Desktop["Hatch Desktop (Electron)"]
+        UI["React 19 + shadcn/ui + Tailwind<br/>Zustand + TanStack Query<br/>Notion-style tabs · Chat · Skills · Knowledge · Schedules"]
+    end
+
+    subgraph Gateway["Hatch Gateway (Hono)"]
+        API["REST API · SSE streaming · Auth · CORS<br/>Routes: /threads /send /events /workspaces<br/>/skills /schedules /knowledge /control"]
+        Services["Harness pool · Knowledge indexer"]
+    end
+
+    subgraph Harness["Hatch Harness (Mastra)"]
+        Agent["Agent lifecycle · Tool dispatch · Memory · Subagents<br/>Mode switching · Follow-up queue · Approval flows<br/>Observational Memory · Heartbeats · Schedules"]
+    end
+
+    subgraph DB["Hatch Database (Drizzle)"]
+        SQLite["SQLite · workspaces, agents, skills,<br/>knowledge_bases, embedding_configs, scheduled_jobs"]
+    end
+
+    subgraph Sandbox["Sandbox System"]
+        direction LR
+        DS["DockerSandbox<br/>(dev: direct)"]
+        RS["RemoteSandbox<br/>(prod: HTTP)"]
+        SS["Sandbox Service<br/>(Hono on Docker host)"]
+        Containers["Sandbox Containers<br/>(isolated per workspace)"]
+    end
+
+    Desktop -->|"HTTP + SSE"| Gateway
+    API --> Services
+    Gateway -->|"Harness Pool"| Harness
+    Harness --> DB
+    Harness --> Sandbox
+    DS --> Containers
+    RS -->|"HTTP"| SS
+    SS --> Containers
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    Hatch Desktop (Electron)                  │
-│                                                              │
-│  React 19 + shadcn/ui + Tailwind + Zustand + TanStack Query │
-│  Notion-style tabs · Chat · Skills · Knowledge · Schedules   │
-└──────────────────────────┬──────────────────────────────────┘
-                           │
-                           │  HTTP + SSE (Server-Sent Events)
-                           ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    Hatch Gateway (Hono)                       │
-│                                                              │
-│  REST API · SSE streaming · Auth · CORS · Rate limiting      │
-│  Routes: /threads /send /events /workspaces /skills          │
-│          /schedules /knowledge /messages /control             │
-│  Services: Harness pool · Knowledge indexer (background cron) │
-└──────────────────────────┬──────────────────────────────────┘
-                           │
-                           │  Harness Pool (concurrent agents)
-                           ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    Hatch Harness (Mastra)                     │
-│                                                              │
-│  Agent lifecycle · Tool dispatch · Memory · Subagents        │
-│  Mode switching · Follow-up queue · Approval flows           │
-│  Observational Memory (Actor / Observer / Reflector)         │
-│  Heartbeats · Schedules · Workspace loader                   │
-└──────────────────────────┬──────────────────────────────────┘
-                           │
-                           ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    Hatch Database (Drizzle)                   │
-│                                                              │
-│  SQLite · 6 tables: workspaces, agents, skills,             │
-│  knowledge_bases, embedding_configs, scheduled_jobs          │
-└─────────────────────────────────────────────────────────────┘
+
+### Sandbox Architecture
+
+The sandbox system supports two deployment modes controlled by a single env var:
+
+```mermaid
+graph LR
+    subgraph dev["Dev Mode (default)"]
+        G1["Gateway"] --> D1["DockerSandbox"] --> DC1["docker CLI"] --> C1["Containers"]
+    end
+
+    subgraph prod["Production Mode (SANDBOX_SERVICE_URL)"]
+        G2["Gateway"] --> R2["RemoteSandbox"]
+        R2 -->|"HTTP :3100"| S2["Sandbox Service"]
+        S2 --> D2["DockerSandbox"] --> DC2["docker CLI"] --> C2["Containers"]
+    end
+
+    style dev fill:#1a1a2e,stroke:#16213e,color:#fff
+    style prod fill:#1a1a2e,stroke:#16213e,color:#fff
 ```
+
+Both modes implement the same `MastraSandbox` interface — zero changes to agent, workspace, or tool code. See [`apps/gateway/SANDBOX-DEPLOYMENT.md`](apps/gateway/SANDBOX-DEPLOYMENT.md) for deployment details.
 
 ### Design Principles
 
@@ -217,11 +237,16 @@ hatch/
 │   │   │   ├── main/         # Electron main process
 │   │   │   └── renderer/     # React app (components, stores, routes)
 │   │   └── vite.config.ts
-│   └── gateway/              # Hono HTTP/SSE server
+│   ├── gateway/              # Hono HTTP/SSE server
+│   │   └── src/
+│   │       ├── routes/       # 9 route modules
+│   │       ├── services/     # Harness pool, knowledge indexer, DockerSandbox, RemoteSandbox
+│   │       └── middleware/    # Auth, CORS, error handling
+│   └── sandbox-service/      # Standalone sandbox management service (prod)
 │       └── src/
-│           ├── routes/       # 9 route modules
-│           ├── services/     # Harness pool, knowledge indexer
-│           └── middleware/    # Auth, CORS, error handling
+│           ├── routes.ts     # REST API for sandbox lifecycle
+│           ├── sandbox-store.ts  # In-memory sandbox registry
+│           └── docker-sandbox.ts # DockerSandbox (self-contained)
 ├── packages/
 │   ├── shared/               # Zod schemas, shared types (source of truth)
 │   ├── database/             # Drizzle ORM + SQLite (6 tables)
@@ -250,6 +275,7 @@ hatch/
 | Database | Drizzle ORM + SQLite | Local persistence, type-safe queries |
 | Validation | Zod 4.3 | Runtime schema validation |
 | Streaming | Server-Sent Events | Real-time agent events |
+| Sandbox | Docker containers | Isolated per-workspace code execution |
 | Scheduling | RRULE (RFC 5545) | Durable recurring agent tasks |
 
 ---
@@ -264,8 +290,11 @@ bun run dev               # Run gateway + desktop together
 bun run dev:gateway       # Gateway only (port 3000)
 bun run dev:desktop       # Desktop only (Electron + Vite HMR)
 
+# Sandbox Service (production — run on Docker host)
+cd apps/sandbox-service && bun run dev    # Sandbox service (port 3100)
+
 # Build
-bun run build             # Build all 7 packages
+bun run build             # Build all packages
 
 # Type checking
 bun run typecheck         # TypeScript check across monorepo

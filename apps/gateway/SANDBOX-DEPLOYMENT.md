@@ -1,105 +1,175 @@
 # Sandbox Deployment Guide
 
-## Current Architecture (Dev)
+## Architecture Overview
 
-- **Dockerfile.sandbox** — Python 3.12 Alpine image with Node.js, data processing libs (pandas, numpy, PDF tools, etc.). Stays alive with `tail -f /dev/null`.
-- **DockerSandbox** (`src/services/docker-sandbox.ts`) — Gateway shells out to `docker` CLI directly to create/manage containers per workspace.
-- **agent-factory.ts** — Each workspace gets its own container (`hatch-sandbox-${workspaceId}`) with bind mounts from `~/.hatch/workspaces/{id}`.
+Hatch uses isolated Docker containers as sandboxes for agent code execution. The sandbox system has two modes controlled by a single environment variable:
 
-Works fine locally because the gateway process and Docker daemon share the same host filesystem.
+```
+┌─ Dev Mode (default) ──────────────────────────────────────────────────────┐
+│                                                                           │
+│  Gateway ──▶ DockerSandbox ──▶ docker CLI ──▶ Sandbox Containers          │
+│  (same host, direct access)                                               │
+│                                                                           │
+└───────────────────────────────────────────────────────────────────────────┘
+
+┌─ Production Mode (SANDBOX_SERVICE_URL set) ───────────────────────────────┐
+│                                                                           │
+│  Gateway ──▶ RemoteSandbox ──── HTTP ────▶ Sandbox Service ──▶ Docker     │
+│  (any host)                                (Docker host)                  │
+│                                                                           │
+└───────────────────────────────────────────────────────────────────────────┘
+```
+
+Both modes use the same `MastraSandbox` interface — zero changes to agent, workspace, or tool code.
+
+## Components
+
+| Component | Location | Deploys to |
+|-----------|----------|------------|
+| **DockerSandbox** | `apps/gateway/src/services/docker-sandbox.ts` | Gateway (dev) or Sandbox Service (prod) |
+| **RemoteSandbox** | `apps/gateway/src/services/remote-sandbox.ts` | Gateway (prod only) |
+| **Sandbox Service** | `apps/sandbox-service/` | Docker host (prod only) |
+| **Sandbox Image** | `apps/gateway/Dockerfile.sandbox` | Docker host |
+
+## Sandbox Image
+
+Python 3.12 Alpine with Node.js, data processing libs (pandas, numpy, PDF tools, etc.):
+
+```bash
+docker build -t hatch-sandbox -f apps/gateway/Dockerfile.sandbox .
+```
+
+Each workspace gets its own container (`hatch-sandbox-${workspaceId}`) with:
+- Resource limits: 512MB RAM, 1 CPU, 256 PIDs (configurable)
+- Read-only filesystem with writable `/tmp`
+- Configurable network isolation
+- Bind mounts from `~/.hatch/workspaces/{id}`
 
 ---
 
-## Problems for Staging/Prod
+## Dev Mode
 
-| Issue                        | Detail                                                                                              |
-| ---------------------------- | --------------------------------------------------------------------------------------------------- |
-| **Docker daemon access**     | Gateway calls `docker` CLI directly. If containerized, needs Docker socket (DooD) or DinD.          |
-| **Bind mounts use host paths** | `_hostWorkDir` resolves on the Docker host. Breaks if gateway is itself in a container.           |
-| **No resource limits**       | No `--memory`, `--cpus`, `--pids-limit`. A user can exhaust the host.                               |
-| **No network isolation**     | Sandboxes can reach internal services, databases, metadata endpoints.                               |
-| **No image registry**        | `hatch-sandbox` must be pre-built on the host. No automated pull.                                   |
-| **Vertical scaling only**    | One host = limited concurrent sandboxes.                                                            |
+Gateway and Docker daemon on the same machine. No extra setup needed.
+
+```bash
+bun run dev:gateway
+```
+
+The gateway uses `DockerSandbox` directly — shells out to `docker` CLI to create/manage containers.
 
 ---
 
-## Staging: Quick Wins
+## Production Mode
 
-Run the **gateway as a process (not containerized)** on a VM with Docker installed. Avoids DooD/DinD complexity.
+The gateway runs separately from the Docker host. The Sandbox Service handles container management over HTTP.
 
-### 1. Harden sandbox containers
-
-In `docker-sandbox.ts` → `_buildRunArgs()`, add resource limits and network isolation:
-
-```ts
-args.push(
-  '--memory', '512m',
-  '--cpus', '1',
-  '--pids-limit', '256',
-  '--network', 'none',
-  '--read-only',
-  '--tmpfs', '/tmp:size=100m',
-  this._image, 'tail', '-f', '/dev/null'
-);
-```
-
-### 2. Push image to a container registry
-
-Build and push `hatch-sandbox` to ECR/GCR/GHCR so it's available without manual builds:
+### 1. Deploy Sandbox Service on Docker host
 
 ```bash
-docker build -t hatch-sandbox -f Dockerfile.sandbox .
-docker tag hatch-sandbox <registry>/hatch-sandbox:latest
-docker push <registry>/hatch-sandbox:latest
+# Build
+cd apps/sandbox-service && bun run build
+
+# Run (Docker daemon must be accessible on this host)
+SANDBOX_SERVICE_PORT=3100 node dist/index.js
 ```
 
-### 3. Pre-pull on deploy
-
-Add a deploy step or startup script that pulls the latest image:
+Ensure the `hatch-sandbox` image is available:
 
 ```bash
+# Build locally
+docker build -t hatch-sandbox -f apps/gateway/Dockerfile.sandbox .
+
+# Or pull from registry
 docker pull <registry>/hatch-sandbox:latest
 docker tag <registry>/hatch-sandbox:latest hatch-sandbox
 ```
 
+### 2. Point Gateway to Sandbox Service
+
+```bash
+SANDBOX_SERVICE_URL=http://sandbox-host:3100
+```
+
+That's it. The gateway detects the env var and switches from `DockerSandbox` to `RemoteSandbox`.
+
+### Production topology
+
+```
+┌─ Host A ──────────────────┐     ┌─ Host B (Docker host) ──────────┐
+│                            │     │                                  │
+│  Gateway                   │     │  Sandbox Service (:3100)         │
+│  (container or process)    │────▶│    ├── DockerSandbox             │
+│                            │     │    ├── sandbox-ws-001            │
+│  No Docker needed          │     │    ├── sandbox-ws-002            │
+│                            │     │    └── sandbox-ws-003            │
+└────────────────────────────┘     └──────────────────────────────────┘
+```
+
 ---
 
-## Production: Separate Sandbox Service
+## Sandbox Service API
 
-Extract sandbox management into its own microservice on dedicated host(s):
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/health` | Health check |
+| `POST` | `/sandboxes` | Create & start sandbox |
+| `GET` | `/sandboxes/:id` | Get sandbox info |
+| `POST` | `/sandboxes/:id/exec` | Execute command |
+| `POST` | `/sandboxes/:id/mount` | Mount host path |
+| `DELETE` | `/sandboxes/:id` | Destroy sandbox |
+
+See [`apps/sandbox-service/README.md`](../../apps/sandbox-service/README.md) for full API docs.
+
+---
+
+## Environment Variables
+
+### Gateway
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SANDBOX_SERVICE_URL` | *(unset)* | Set to enable remote mode (e.g. `http://sandbox-host:3100`) |
+| `SANDBOX_MEMORY` | `512m` | Container memory limit |
+| `SANDBOX_CPUS` | `1` | Container CPU limit |
+| `SANDBOX_PIDS_LIMIT` | `256` | Max PIDs inside container |
+| `SANDBOX_TMPFS_SIZE` | `100m` | Writable `/tmp` size |
+| `SANDBOX_NETWORK` | `bridge` | Docker network mode |
+| `SANDBOX_READ_ONLY` | `true` | Read-only container filesystem |
+
+### Sandbox Service
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SANDBOX_SERVICE_PORT` | `3100` | Port the service listens on |
+
+---
+
+## Scaling
+
+### Adding more sandbox capacity
+
+Deploy additional Sandbox Service instances on separate Docker hosts. Use a load balancer or assign workspaces to specific hosts:
 
 ```
-[Gateway Instance]  ──HTTP/gRPC──▶  [Sandbox Service Instance(s)]
-   (no Docker needed)                   (Docker daemon + sandbox containers)
+Gateway ──▶ Load Balancer ──▶ Sandbox Service (Host B)
+                           ──▶ Sandbox Service (Host C)
+                           ──▶ Sandbox Service (Host D)
 ```
-
-### Benefits
-
-- **Independent scaling** — add sandbox hosts without touching the gateway.
-- **Blast radius isolation** — runaway sandbox can't affect gateway or DB.
-- **Simpler gateway deployment** — no Docker dependency.
-- **Filesystem** — use volumes or object storage (S3) instead of bind mounts.
-
-### Implementation approach
-
-1. Create a `SandboxService` HTTP API wrapping `DockerSandbox` (endpoints: `POST /create`, `POST /exec`, `DELETE /destroy`).
-2. Create a `RemoteSandbox` class implementing `MastraSandbox` that calls the HTTP API instead of shelling out to Docker.
-3. Swap `DockerSandbox` for `RemoteSandbox` in `agent-factory.ts` — no changes needed in agent/workspace code thanks to the `MastraSandbox` interface.
 
 ### Kubernetes alternative
 
 Replace `DockerSandbox` with a `KubernetesSandbox` that creates pods via the K8s API:
 
-- Resource limits and network policies handled natively.
-- Auto-scaling via node pools.
-- No Docker socket or DinD required.
+- Resource limits and network policies handled natively
+- Auto-scaling via node pools
+- No Docker socket or DinD required
+- Same `MastraSandbox` interface — drop-in replacement
 
 ---
 
 ## Summary
 
-| Environment   | Architecture                                                        | Effort |
-| ------------- | ------------------------------------------------------------------- | ------ |
-| **Dev**       | Gateway + Docker on same machine (current)                          | Done   |
-| **Staging**   | Gateway process + Docker on same VM, hardened containers + registry  | Small  |
-| **Production**| Separate Sandbox Service on dedicated hosts, or K8s pods            | Medium |
+| Environment | How it works | Setup |
+|-------------|-------------|-------|
+| **Dev** | Gateway uses `DockerSandbox` directly | None (default) |
+| **Production** | Gateway uses `RemoteSandbox` → Sandbox Service → Docker | Set `SANDBOX_SERVICE_URL` |

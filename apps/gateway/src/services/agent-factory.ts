@@ -6,6 +6,7 @@ import { Agent } from '@mastra/core/agent';
 import { ModelRouterEmbeddingModel } from '@mastra/core/llm';
 import { LocalFilesystem, LocalSandbox, Workspace, WORKSPACE_TOOLS } from '@mastra/core/workspace';
 import { DockerSandbox } from './docker-sandbox.js';
+import { RemoteSandbox } from './remote-sandbox.js';
 import { LibSQLStore, LibSQLVector } from '@mastra/libsql';
 import { Memory } from '@mastra/memory';
 import { embed } from 'ai';
@@ -150,24 +151,30 @@ export async function createWorkspace(workspaceId: string) {
           contained: true,
         }),
       },
-      sandbox: new DockerSandbox({
-        id: workspaceId,
-        containerName: `hatch-sandbox-${workspaceId}`,
-        image: 'hatch-sandbox',
-        resourceLimits: {
-          memory: process.env.SANDBOX_MEMORY ?? '512m',
-          cpus: process.env.SANDBOX_CPUS ?? '1',
-          pidsLimit: Number(process.env.SANDBOX_PIDS_LIMIT) || 256,
-          tmpfsSize: process.env.SANDBOX_TMPFS_SIZE ?? '100m',
-        },
-        networkOptions: {
-          network: process.env.SANDBOX_NETWORK ?? 'bridge',
-        },
-        readOnly: process.env.SANDBOX_READ_ONLY !== 'false',
-        instructions(opts) {
-          return opts.defaultInstructions + `\n All your work must be inside projects folder.`;
-        },
-      }),
+      sandbox: (() => {
+        const sandboxOpts = {
+          id: workspaceId,
+          containerName: `hatch-sandbox-${workspaceId}`,
+          image: 'hatch-sandbox',
+          resourceLimits: {
+            memory: process.env.SANDBOX_MEMORY ?? '512m',
+            cpus: process.env.SANDBOX_CPUS ?? '1',
+            pidsLimit: Number(process.env.SANDBOX_PIDS_LIMIT) || 256,
+            tmpfsSize: process.env.SANDBOX_TMPFS_SIZE ?? '100m',
+          },
+          networkOptions: {
+            network: process.env.SANDBOX_NETWORK ?? 'bridge',
+          },
+          readOnly: process.env.SANDBOX_READ_ONLY !== 'false',
+          instructions(opts: { defaultInstructions: string }) {
+            return opts.defaultInstructions + `\n All your work must be inside projects folder.`;
+          },
+        };
+
+        return process.env.SANDBOX_SERVICE_URL
+          ? new RemoteSandbox({ ...sandboxOpts, serviceUrl: process.env.SANDBOX_SERVICE_URL })
+          : new DockerSandbox(sandboxOpts);
+      })(),
       bm25: true,
       vectorStore,
       skills() {

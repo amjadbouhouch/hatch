@@ -98,6 +98,18 @@
         "@hatch/typescript-config": "workspace:*",
       },
     },
+    "apps/sandbox-service": {
+      "name": "@hatch/sandbox-service",
+      "version": "0.0.0",
+      "dependencies": {
+        "@hono/node-server": "^1.19.11",
+        "@mastra/core": "^1.15.0",
+        "hono": "^4.12.8",
+      },
+      "devDependencies": {
+        "@hatch/typescript-config": "workspace:*",
+      },
+    },
     "apps/tui": {
       "name": "@hatch/tui",
       "version": "0.0.0",
@@ -387,6 +399,8 @@
     "@hatch/gateway": ["@hatch/gateway@workspace:apps/gateway"],
 
     "@hatch/harness": ["@hatch/harness@workspace:packages/harness"],
+
+    "@hatch/sandbox-service": ["@hatch/sandbox-service@workspace:apps/sandbox-service"],
 
     "@hatch/shared": ["@hatch/shared@workspace:packages/shared"],
 

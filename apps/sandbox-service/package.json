@@ -1,0 +1,21 @@
+{
+  "name": "@hatch/sandbox-service",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist .turbo *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.19.11",
+    "@mastra/core": "^1.15.0",
+    "hono": "^4.12.8"
+  },
+  "devDependencies": {
+    "@hatch/typescript-config": "workspace:*"
+  }
+}
